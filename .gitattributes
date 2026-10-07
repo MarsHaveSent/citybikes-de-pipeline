@@ -1,0 +1,3 @@
+# Файлы монтируются в Linux-контейнеры, а Git for Windows по умолчанию
+# конвертирует переводы строк в CRLF. С CRLF ломаются shell-скрипты и entrypoint'ы.
+* text=auto eol=lf
