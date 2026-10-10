@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "ELT pipeline on CityBikes data: Airflow, Spark, HDFS, Delta Lake, ClickHouse, Metabase"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "psycopg[binary]>=3.3.6",
+    "requests>=2.34.2",
+]
 
 [tool.ruff]
 line-length = 100
@@ -15,11 +18,12 @@ select = ["E", "F", "W", "I", "N", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src", "."]
 
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
+    "requests-mock>=1.12.1",
     "ruff>=0.16.10",
 ]
