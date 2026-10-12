@@ -2,7 +2,7 @@
 
 ELT-пайплайн на данных сетей велошеринга: загрузка из CityBikes API в PostgreSQL, обработка на Spark, хранение витрин в HDFS (Delta Lake), аналитика в ClickHouse и Metabase. Весь стек поднимается в Docker.
 
-Помимо разовой загрузки снимка сетей пайплайн регулярно собирает состояние станций, обогащает его погодой и ищет крупные города без велошеринга.
+Пайплайн регулярно собирает каталог сетей и состояние станций с учётом лимита API, обогащает данные погодой и ищет крупные города без велошеринга.
 
 > Проект в разработке.
 
@@ -21,6 +21,8 @@ docker compose up -d
 
 - Airflow: http://localhost:8080, логин и пароль — `AIRFLOW_ADMIN_USER` и `AIRFLOW_ADMIN_PASSWORD` из `.env`
 - PostgreSQL: `localhost:15432`, БД `citybikes`, пользователь `citybikes`
+- Spark Master UI: http://localhost:8081, Spark Worker UI: http://localhost:8082
+- HDFS NameNode UI: http://localhost:9870
 
 ## Источник данных
 
