@@ -15,8 +15,8 @@ from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import DAG
 
 from citybikes.api import CityBikesClient
-from citybikes.crawl import crawl_stations
 from citybikes.settings import CRAWL_BATCH_SIZE, POSTGRES_CONN_ID, RATE_LIMIT_RESERVE
+from citybikes.sync import crawl_stations
 
 
 def crawl() -> dict[str, Any]:

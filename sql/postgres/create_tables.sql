@@ -31,3 +31,34 @@ CREATE TABLE IF NOT EXISTS stations (
     synced_at   timestamptz NOT NULL,
     PRIMARY KEY (network_id, station_id)
 );
+
+-- В extra.ebikes встречаются не только числа, поэтому тип проверяется явно
+CREATE OR REPLACE FUNCTION ebikes_count(extra jsonb) RETURNS integer
+LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN jsonb_typeof(extra -> 'ebikes') = 'number'
+                THEN (extra ->> 'ebikes')::numeric::integer END
+$$;
+
+-- Лог изменений станций: строка появляется, только когда изменилось число велосипедов,
+-- свободных слотов или электровелосипедов. Без FK на stations: история переживает удаление станции.
+CREATE TABLE IF NOT EXISTS station_status_log (
+    network_id  text NOT NULL,
+    station_id  text NOT NULL,
+    observed_at timestamptz NOT NULL,
+    "timestamp" text,
+    free_bikes  integer,
+    empty_slots integer,
+    ebikes      integer,
+    PRIMARY KEY (network_id, station_id, observed_at)
+);
+CREATE INDEX IF NOT EXISTS station_status_log_observed_at_idx
+    ON station_status_log (observed_at);
+
+-- Реестр полей из ответов API для отслеживания дрейфа схемы
+CREATE TABLE IF NOT EXISTS schema_fields (
+    entity        text NOT NULL,
+    field         text NOT NULL,
+    first_seen_at timestamptz NOT NULL,
+    last_seen_at  timestamptz NOT NULL,
+    PRIMARY KEY (entity, field)
+);

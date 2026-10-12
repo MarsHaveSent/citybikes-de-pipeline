@@ -1,11 +1,15 @@
-"""Запись в Postgres-источник: таблицы networks и stations."""
+"""Запись в Postgres-источник: сети, станции, лог изменений станций, реестр полей."""
 
+import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from psycopg import Connection
 from psycopg.types.json import Jsonb
+
+log = logging.getLogger(__name__)
 
 NETWORK_COLUMNS = (
     "id",
@@ -93,6 +97,7 @@ def upsert_networks(conn: Connection, networks: list[dict[str, Any]], seen_at: d
         keep=("first_seen_at",),
     )
     rows = [network_row(n, seen_at) for n in networks]
+    register_fields(conn, "network", {k for n in networks for k in n}, seen_at)
     with conn.cursor() as cur:
         cur.executemany(sql, rows)
     return len(rows)
@@ -111,25 +116,94 @@ def select_networks_to_sync(conn: Connection, limit: int) -> list[str]:
         return [row[0] for row in cur.fetchall()]
 
 
-def replace_stations(
+@dataclass
+class StationsSyncResult:
+    stations: int
+    changes: int
+
+
+_STAGE_COLUMNS = ", ".join(f'"{c}"' for c in STATION_COLUMNS)
+
+# Изменением считается новое значение хотя бы одного счётчика; новая станция тоже пишется в лог,
+# это начальное состояние её истории
+_LOG_CHANGES_SQL = """
+    INSERT INTO station_status_log
+        (network_id, station_id, observed_at, "timestamp", free_bikes, empty_slots, ebikes)
+    SELECT st.network_id, st.station_id, st.synced_at, st."timestamp",
+           st.free_bikes, st.empty_slots, ebikes_count(st.extra)
+    FROM stations_stage st
+    LEFT JOIN stations s USING (network_id, station_id)
+    WHERE s.station_id IS NULL
+       OR (st.free_bikes, st.empty_slots, ebikes_count(st.extra))
+          IS DISTINCT FROM (s.free_bikes, s.empty_slots, ebikes_count(s.extra))
+    ON CONFLICT DO NOTHING
+"""
+
+_UPSERT_FROM_STAGE_SQL = f"""
+    INSERT INTO stations ({_STAGE_COLUMNS})
+    SELECT {_STAGE_COLUMNS} FROM stations_stage
+    ON CONFLICT (network_id, station_id) DO UPDATE SET
+        {", ".join(f'"{c}" = EXCLUDED."{c}"' for c in STATION_COLUMNS[2:])}
+"""
+
+
+def sync_stations(
     conn: Connection, network_id: str, stations: list[dict[str, Any]], synced_at: datetime
-) -> int:
-    """Приводит станции сети к состоянию из ответа API и отмечает время синхронизации."""
+) -> StationsSyncResult:
+    """Приводит станции сети к ответу API и пишет изменения в station_status_log."""
     rows = station_rows(network_id, stations, synced_at)
+    register_fields(conn, "station", {k for s in stations for k in s}, synced_at)
+    register_fields(
+        conn, "station_extra", {k for s in stations for k in s.get("extra") or {}}, synced_at
+    )
+
     with conn.cursor() as cur:
-        if rows:
-            sql = _upsert_sql("stations", STATION_COLUMNS, key=("network_id", "station_id"))
-            cur.executemany(sql, rows)
-        # Таблица хранит текущее состояние: станции, пропавшие из ответа, удаляем
+        # Временная таблица живёт до конца соединения, поэтому её чистят перед каждой сетью
+        cur.execute("CREATE TEMP TABLE IF NOT EXISTS stations_stage (LIKE stations)")
+        cur.execute("TRUNCATE stations_stage")
+        with cur.copy(f"COPY stations_stage ({_STAGE_COLUMNS}) FROM STDIN") as copy:
+            for row in rows:
+                copy.write_row(row)
+
+        # Сравнение с текущим состоянием должно идти до обновления
+        cur.execute(_LOG_CHANGES_SQL)
+        changes = cur.rowcount
+        cur.execute(_UPSERT_FROM_STAGE_SQL)
+        # Таблица хранит текущее состояние
         cur.execute(
             """
-            DELETE FROM stations
-            WHERE network_id = %s AND NOT station_id = ANY(%s::text[])
+            DELETE FROM stations s
+            WHERE s.network_id = %s
+              AND NOT EXISTS (SELECT 1 FROM stations_stage st WHERE st.station_id = s.station_id)
             """,
-            (network_id, [r[1] for r in rows]),
+            (network_id,),
         )
         cur.execute(
             "UPDATE networks SET stations_synced_at = %s WHERE id = %s",
             (synced_at, network_id),
         )
-    return len(rows)
+    return StationsSyncResult(stations=len(rows), changes=changes)
+
+
+def register_fields(
+    conn: Connection, entity: str, fields: set[str], seen_at: datetime
+) -> list[str]:
+    """Отмечает поля, встреченные в ответе API, и возвращает те, которых раньше не было."""
+    if not fields:
+        return []
+    with conn.cursor() as cur:
+        cur.execute("SELECT field FROM schema_fields WHERE entity = %s", (entity,))
+        known = {row[0] for row in cur.fetchall()}
+        cur.executemany(
+            """
+            INSERT INTO schema_fields (entity, field, first_seen_at, last_seen_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (entity, field) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+            """,
+            [(entity, f, seen_at, seen_at) for f in sorted(fields)],
+        )
+    new = sorted(fields - known)
+    # При самой первой загрузке - не дрейф
+    if new and known:
+        log.warning("Новые поля в %s: %s", entity, ", ".join(new))
+    return new

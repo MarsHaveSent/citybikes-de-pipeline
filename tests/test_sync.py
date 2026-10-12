@@ -1,7 +1,8 @@
 import pytest
 
-from citybikes import crawl
+from citybikes import sync
 from citybikes.api import NetworkNotFoundError, RateLimitExceededError
+from citybikes.db import StationsSyncResult
 
 
 class FakeConn:
@@ -30,16 +31,16 @@ class FakeClient:
 def synced(monkeypatch):
     calls = {}
 
-    def replace_stations(conn, network_id, stations, synced_at):
+    def sync_stations(conn, network_id, stations, synced_at):
         calls[network_id] = len(stations)
-        return len(stations)
+        return StationsSyncResult(stations=len(stations), changes=len(stations) // 2)
 
-    monkeypatch.setattr(crawl.db, "replace_stations", replace_stations)
+    monkeypatch.setattr(sync.db, "sync_stations", sync_stations)
     return calls
 
 
 def queue(monkeypatch, ids):
-    monkeypatch.setattr(crawl.db, "select_networks_to_sync", lambda conn, limit: ids[:limit])
+    monkeypatch.setattr(sync.db, "select_networks_to_sync", lambda conn, limit: ids[:limit])
 
 
 def test_missing_network_is_synced_as_empty(monkeypatch, synced):
@@ -47,7 +48,7 @@ def test_missing_network_is_synced_as_empty(monkeypatch, synced):
     client = FakeClient({"a": {"stations": [{"id": "1"}]}, "gone": NetworkNotFoundError("gone")})
     conn = FakeConn()
 
-    stats = crawl.crawl_stations(client, conn, batch_size=10, rate_limit_reserve=0)
+    stats = sync.crawl_stations(client, conn, batch_size=10, rate_limit_reserve=0)
 
     assert synced == {"a": 1, "gone": 0}
     assert (stats.synced, stats.empty, stats.not_found) == (2, 1, 1)
@@ -58,7 +59,7 @@ def test_stops_on_rate_limit_error(monkeypatch, synced):
     queue(monkeypatch, ["a", "b", "c"])
     client = FakeClient({"a": {"stations": []}, "b": RateLimitExceededError(), "c": {}})
 
-    stats = crawl.crawl_stations(client, FakeConn(), batch_size=10, rate_limit_reserve=0)
+    stats = sync.crawl_stations(client, FakeConn(), batch_size=10, rate_limit_reserve=0)
 
     assert synced == {"a": 0}
     assert stats.stopped_by_limit
@@ -68,7 +69,16 @@ def test_keeps_reserve_for_polling(monkeypatch, synced):
     queue(monkeypatch, ["a", "b", "c"])
     client = FakeClient({n: {"stations": []} for n in "abc"}, remaining=12)
 
-    stats = crawl.crawl_stations(client, FakeConn(), batch_size=10, rate_limit_reserve=10)
+    stats = sync.crawl_stations(client, FakeConn(), batch_size=10, rate_limit_reserve=10)
 
     assert list(synced) == ["a", "b"]
     assert stats.stopped_by_limit
+
+
+def test_poll_syncs_given_networks_and_counts_changes(synced):
+    client = FakeClient({"a": {"stations": [{"id": "1"}, {"id": "2"}]}, "b": {"stations": []}})
+
+    stats = sync.sync_networks(client, FakeConn(), ["a", "b"])
+
+    assert synced == {"a": 2, "b": 0}
+    assert (stats.stations, stats.changes, stats.empty) == (2, 1, 1)
