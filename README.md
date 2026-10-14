@@ -27,3 +27,5 @@ docker compose up -d
 ## Источник данных
 
 Данные о сетях и станциях предоставляет [CityBikes](https://citybik.es/) через [API v2](https://api.citybik.es/v2/).
+
+Погодные данные: [Open-Meteo](https://open-meteo.com/), лицензия [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).

@@ -62,3 +62,17 @@ CREATE TABLE IF NOT EXISTS schema_fields (
     last_seen_at  timestamptz NOT NULL,
     PRIMARY KEY (entity, field)
 );
+
+-- Почасовая погода в городах опрашиваемых сетей (Open-Meteo).
+-- Осадки - сумма за час, который заканчивается в hour, остальное - значение на момент hour
+CREATE TABLE IF NOT EXISTS weather_hourly (
+    network_id           text NOT NULL,
+    hour                 timestamptz NOT NULL,
+    temperature          real,
+    apparent_temperature real,
+    precipitation        real,
+    wind_speed           real,
+    weather_code         smallint,
+    fetched_at           timestamptz NOT NULL,
+    PRIMARY KEY (network_id, hour)
+);

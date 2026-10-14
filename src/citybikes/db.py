@@ -116,6 +116,42 @@ def select_networks_to_sync(conn: Connection, limit: int) -> list[str]:
         return [row[0] for row in cur.fetchall()]
 
 
+def select_network_locations(
+    conn: Connection, network_ids: Sequence[str]
+) -> list[tuple[str, float, float]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, (location ->> 'latitude')::float, (location ->> 'longitude')::float
+            FROM networks
+            WHERE id = ANY(%s) AND location ? 'latitude' AND location ? 'longitude'
+            ORDER BY id
+            """,
+            (list(network_ids),),
+        )
+        return cur.fetchall()
+
+
+def upsert_weather(conn: Connection, rows: list[tuple]) -> int:
+    sql = _upsert_sql(
+        "weather_hourly",
+        (
+            "network_id",
+            "hour",
+            "temperature",
+            "apparent_temperature",
+            "precipitation",
+            "wind_speed",
+            "weather_code",
+            "fetched_at",
+        ),
+        key=("network_id", "hour"),
+    )
+    with conn.cursor() as cur:
+        cur.executemany(sql, rows)
+    return len(rows)
+
+
 @dataclass
 class StationsSyncResult:
     stations: int
