@@ -19,7 +19,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      # У setup-uv нет мажорных тегов вроде v10, только точные версии
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
       # падает если uv.lock не соответствует pyproject.toml
@@ -43,7 +44,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
       - run: uv sync --locked
