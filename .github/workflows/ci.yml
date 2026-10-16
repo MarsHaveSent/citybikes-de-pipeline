@@ -69,8 +69,14 @@ jobs:
         run: |
           python3 scripts/init_env.py
           docker compose config --quiet
-          SITE_DOMAIN=example.com AIRFLOW_IMAGE_TAG=x SPARK_IMAGE_TAG=x HADOOP_IMAGE_TAG=x \
+          SITE_DOMAIN=example.com ACME_EMAIL=ci@example.com \
+          AIRFLOW_IMAGE_TAG=x SPARK_IMAGE_TAG=x HADOOP_IMAGE_TAG=x \
             docker compose -f docker-compose.yml -f deploy/compose.prod.yml config --quiet
+      - name: Validate Caddyfile
+        run: >-
+          docker run --rm -e SITE_DOMAIN=example.com -e ACME_EMAIL=ci@example.com
+          -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2.11.7 caddy validate --config /etc/caddy/Caddyfile
       # DAGи с теми же томами и переменными что в compose
       - name: Check DAGs
         run: >-

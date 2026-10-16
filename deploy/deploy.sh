@@ -25,10 +25,12 @@ for name in airflow spark hadoop; do
 done
 
 docker compose pull --quiet
-# --wait считает ошибкой штатное завершение одноразовых *-init, поэтому ждём только
-# долгоживущие сервисы; *-init всё равно запускаются как их зависимости
+# Сначала поднимаются все сервисы, включая одноразовые *-init: от hdfs-init никто не зависит,
+# и без этого шага его контейнер остался бы на старом образе.
+docker compose up -d --remove-orphans
+# --wait считает ошибкой штатное завершение *-init, поэтому ждём только долгоживущие сервисы
 mapfile -t services < <(docker compose config --services | grep -v -- '-init$')
-docker compose up -d --remove-orphans --wait --wait-timeout 300 "${services[@]}"
+docker compose up -d --wait --wait-timeout 300 "${services[@]}"
 # Удаляет все образы которые не использует ни один контейнер.
 docker image prune --all --force >/dev/null
 

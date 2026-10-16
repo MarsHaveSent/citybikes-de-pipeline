@@ -48,6 +48,7 @@ services:
     image: caddy:2.11.7
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
