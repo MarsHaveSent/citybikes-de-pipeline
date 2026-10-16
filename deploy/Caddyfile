@@ -1,0 +1,13 @@
+# Сертификат для домена Caddy получает и продлевает сам
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	redir /airflow /airflow/
+	handle /airflow/* {
+		reverse_proxy airflow-apiserver:8080
+	}
+
+	handle {
+		respond "CityBikes pipeline" 200
+	}
+}

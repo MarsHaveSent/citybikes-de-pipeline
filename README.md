@@ -42,6 +42,15 @@ TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15499/postgres uv run pyt
 
 В CI на каждый пуш запускаются pre-commit, все тесты с PostgreSQL и проверка DAGов в образе Airflow (`scripts/check_dags.py`).
 
+## Деплой
+
+Сервер обновляется при пуше в `main`, если прошли все проверки CI:
+
+1. Образы Airflow, Spark и Hadoop собираются в GitHub Actions и публикуются в GHCR. Тег образа — хеш его каталога `docker/<образ>` в git ([deploy/image-tag.sh](deploy/image-tag.sh)), поэтому образ пересобирается, только когда меняются его файлы.
+2. По SSH на сервере запускается [deploy/deploy.sh](deploy/deploy.sh): код переключается на этот коммит, образы — на теги, вычисленные из него же, стек перезапускается, скрипт ждёт, пока сервисы пройдут healthcheck. DAG'и, код и SQL смонтированы в контейнеры и обновляются вместе с git, без пересборки образов.
+
+На сервере к `docker-compose.yml` подключается [deploy/compose.prod.yml](deploy/compose.prod.yml): образы из GHCR вместо локальной сборки и Caddy, который получает сертификат Let's Encrypt и открывает Airflow по адресу `https://<домен>/airflow/`. Остальные сервисы наружу не публикуются. Первичная настройка чистого сервера — [deploy/bootstrap.sh](deploy/bootstrap.sh).
+
 ## Источник данных
 
 Данные о сетях и станциях предоставляет [CityBikes](https://citybik.es/) через [API v2](https://api.citybik.es/v2/).

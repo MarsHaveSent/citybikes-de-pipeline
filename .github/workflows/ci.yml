@@ -9,10 +9,13 @@ on:
 permissions:
   contents: read
 
-# Новый пуш в ту же ветку отменяет незавершённый прогон
+# Новый пуш в PR отменяет незавершённый прогон; на main прогоны идут до конца, чтобы не оборвать деплой
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE_PREFIX: ghcr.io/marshavesent/citybikes
 
 jobs:
   lint:
@@ -66,6 +69,8 @@ jobs:
         run: |
           python3 scripts/init_env.py
           docker compose config --quiet
+          SITE_DOMAIN=example.com AIRFLOW_IMAGE_TAG=x SPARK_IMAGE_TAG=x HADOOP_IMAGE_TAG=x \
+            docker compose -f docker-compose.yml -f deploy/compose.prod.yml config --quiet
       # DAGи с теми же томами и переменными что в compose
       - name: Check DAGs
         run: >-
@@ -73,3 +78,74 @@ jobs:
           -e CONNECTION_CHECK_MAX_COUNT=0
           -v ./scripts:/opt/airflow/scripts:ro
           airflow-scheduler python /opt/airflow/scripts/check_dags.py
+
+  # Образы публикуются только после всех проверок и только с main
+  publish:
+    needs: [lint, test, dags]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [airflow, spark, hadoop]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Образ с таким тегом уже собран из тех же файлов - пересобирать нечего
+      - name: Check registry
+        id: image
+        run: |
+          ref="$IMAGE_PREFIX-${{ matrix.image }}:$(bash deploy/image-tag.sh ${{ matrix.image }})"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$ref уже есть в GHCR"
+          fi
+      - uses: docker/build-push-action@v7
+        if: steps.image.outputs.exists != 'true'
+        with:
+          context: docker/${{ matrix.image }}
+          push: true
+          tags: ${{ steps.image.outputs.ref }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: nickolajvolodin.fvds.ru
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cp deploy/known_hosts ~/.ssh/known_hosts
+      # DDoS-фильтр иногда обрывает SSH на этапе соединения
+      # Код 255 - ошибка самого ssh,можно повторить; остальные коды - ошибка в deploy.sh
+      - name: Deploy
+        run: |
+          for attempt in 1 2 3 4 5; do
+            rc=0
+            ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -o BatchMode=yes \
+              "deploy@$DEPLOY_HOST" 'bash -s' -- "$GITHUB_SHA" < deploy/deploy.sh || rc=$?
+            [ "$rc" -ne 255 ] && exit "$rc"
+            echo "SSH: попытка $attempt не удалась, повтор через 30 с"
+            sleep 30
+          done
+          exit 255

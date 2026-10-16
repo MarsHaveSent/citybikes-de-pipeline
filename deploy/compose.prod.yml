@@ -1,0 +1,66 @@
+# Дополнение для сервера: образы из GHCR и Caddy с HTTPS.
+# На сервере подключается через COMPOSE_FILE в .env, поэтому команды - обычный docker compose.
+# Теги образов записывает в .env deploy.sh (см. deploy/image-tag.sh).
+
+x-airflow-image: &airflow-image
+  image: ghcr.io/marshavesent/citybikes-airflow:${AIRFLOW_IMAGE_TAG:?}
+  build: !reset null
+
+x-hadoop-image: &hadoop-image
+  image: ghcr.io/marshavesent/citybikes-hadoop:${HADOOP_IMAGE_TAG:?}
+  build: !reset null
+
+x-spark-image: &spark-image
+  image: ghcr.io/marshavesent/citybikes-spark:${SPARK_IMAGE_TAG:?}
+  build: !reset null
+
+# Airflow открывается по https://<домен>/airflow/, корень домена остаётся под Metabase
+x-airflow-env: &airflow-env
+  AIRFLOW__API__BASE_URL: https://${SITE_DOMAIN:?}/airflow/
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/airflow/execution/
+
+services:
+  airflow-init:
+    <<: *airflow-image
+    environment:
+      <<: *airflow-env
+  airflow-apiserver:
+    <<: *airflow-image
+    environment:
+      <<: *airflow-env
+  airflow-scheduler:
+    <<: *airflow-image
+    environment:
+      <<: *airflow-env
+  airflow-dag-processor:
+    <<: *airflow-image
+    environment:
+      <<: *airflow-env
+
+  namenode: *hadoop-image
+  datanode: *hadoop-image
+  hdfs-init: *hadoop-image
+
+  spark-master: *spark-image
+  spark-worker: *spark-image
+
+  caddy:
+    image: caddy:2.11.7
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    restart: unless-stopped
+    depends_on:
+      - airflow-apiserver
+
+volumes:
+  # Сертификаты Let's Encrypt: без тома Caddy запрашивал бы их заново при каждом пересоздании
+  caddy-data:
+  caddy-config:
