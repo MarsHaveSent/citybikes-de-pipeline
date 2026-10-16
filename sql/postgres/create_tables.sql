@@ -1,3 +1,7 @@
+-- Скрипт выполняется в начале каждого DAG'а, и краулер с опросом стартуют в одну минуту.
+-- запуски выстраиваются в очередь; блокировка снимается с концом транзакции
+SELECT pg_advisory_xact_lock(hashtext('citybikes_create_tables'));
+
 CREATE TABLE IF NOT EXISTS networks (
     id                 text PRIMARY KEY,
     name               text NOT NULL,
