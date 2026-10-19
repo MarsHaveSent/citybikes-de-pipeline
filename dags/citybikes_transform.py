@@ -61,8 +61,8 @@ build_obt = SparkSubmitOperator(
     task_id="build_obt",
     application=f"{SPARK_JOBS}/stations_obt.py",
     name="citybikes_stations_obt",
-    # Дата запуска; перезапуск за ту же дату перезаписывает только свой снимок
-    application_args=["{{ ds }}"],
+    # В Airflow 3 у ручного запуска нет logical_date, и ds не определён
+    application_args=["{{ dag_run.run_after | ds }}"],
     dag=dag,
 )
 
