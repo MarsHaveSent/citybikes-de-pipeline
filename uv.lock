@@ -1,6 +1,10 @@
 version = 1
 revision = 5
 requires-python = "==3.12.*"
+resolution-markers = [
+    "sys_platform != 'win32'",
+    "sys_platform == 'win32'",
+]
 
 [[package]]
 name = "certifi"
@@ -73,7 +77,8 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pre-commit" },
-    { name = "pyspark" },
+    { name = "pyspark", version = "4.1.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
+    { name = "pyspark", version = "4.1.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'win32'" },
     { name = "pytest" },
     { name = "requests-mock" },
     { name = "ruff" },
@@ -88,7 +93,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "pre-commit", specifier = ">=4.6.2" },
-    { name = "pyspark", specifier = "==4.1.3" },
+    { name = "pyspark", marker = "sys_platform != 'win32'", specifier = "==4.1.1" },
+    { name = "pyspark", marker = "sys_platform == 'win32'", specifier = "==4.1.3" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "requests-mock", specifier = ">=1.12.1" },
     { name = "ruff", specifier = ">=0.16.10" },
@@ -256,8 +262,23 @@ wheels = [
 
 [[package]]
 name = "pyspark"
+version = "4.1.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "py4j" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/bf/58ee13add151469c25825b7125bbf62c3bdcec05eec4d458fcb5c5516066/pyspark-4.1.1.tar.gz", hash = "sha256:77f78984aa84fbe865c717dd37b49913b4e5c97d76ef6824f932f1aefa6621ec", size = 455359625, upload-time = "2026-01-09T09:38:38.28Z" }
+
+[[package]]
+name = "pyspark"
 version = "4.1.3"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'win32'",
+]
 dependencies = [
     { name = "py4j" },
 ]

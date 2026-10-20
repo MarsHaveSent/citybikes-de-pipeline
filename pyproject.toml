@@ -27,7 +27,10 @@ pythonpath = ["src", "."]
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
-    "pyspark==4.1.3",
+    # Как в кластере (docker/spark/Dockerfile). На Windows у PySpark 4.1.1 падают воркеры,
+    # там локальные тесты идут на 4.1.3; CI на Linux проверяет версию кластера
+    "pyspark==4.1.1; sys_platform != 'win32'",
+    "pyspark==4.1.3; sys_platform == 'win32'",
     "pytest>=9.1.1",
     "requests-mock>=1.12.1",
     "ruff>=0.16.10",

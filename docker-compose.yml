@@ -41,7 +41,7 @@ x-hadoop-common: &hadoop-common
 
 x-spark-common: &spark-common
   build: docker/spark
-  image: citybikes/spark:4.1.3
+  image: citybikes/spark:4.1.1
 
 services:
   postgres:

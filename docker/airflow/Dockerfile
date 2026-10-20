@@ -1,4 +1,5 @@
-FROM apache/spark:4.1.3-scala2.13-java17-ubuntu AS spark-dist
+# Версия Spark та же, что в docker/spark: под неё собрана Delta
+FROM apache/spark:4.1.1-scala2.13-java17-ubuntu AS spark-dist
 
 FROM apache/airflow:3.3.2-python3.12
 

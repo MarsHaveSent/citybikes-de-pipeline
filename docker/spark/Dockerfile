@@ -1,7 +1,10 @@
 # Официальный образ Spark собран на Ubuntu 22.04 с Python 3.10, а драйвер работает
 # в контейнере Airflow на Python 3.12. PySpark требует одинаковую минорную версию Python
 # у драйвера и воркеров, берём только JDK и Spark.
-FROM apache/spark:4.1.3-scala2.13-java17-ubuntu AS spark-dist
+# Spark 4.1.1, а не последний 4.1.x: Delta 4.1.0 собрана под 4.1.0, а с 4.1.2 часть внутренних
+# классов Spark изменена
+# 4.1.1 совпадает с 4.1.0 по этим классам и исправляет импорт PySpark на Windows
+FROM apache/spark:4.1.1-scala2.13-java17-ubuntu AS spark-dist
 
 FROM python:3.12-slim-bookworm
 
