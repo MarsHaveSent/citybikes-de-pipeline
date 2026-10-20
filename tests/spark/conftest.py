@@ -10,6 +10,9 @@ from pyspark.sql import SparkSession
 # это может быть другой интерпретатор и воркер не подключается к JVM
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 
+# Та же версия Delta, что в образах.
+DELTA_PACKAGE = "io.delta:delta-spark_4.1_2.13:4.1.0"
+
 # Типы колонок такие же, какие Spark получает из Postgres по JDBC: jsonb приходит строкой
 NETWORKS_SCHEMA = (
     "id string, name string, location string, company array<string>, system string, "
@@ -30,6 +33,12 @@ def spark():
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", "1")
         .config("spark.ui.enabled", "false")
+        .config("spark.jars.packages", DELTA_PACKAGE)
+        .config("spark.jars.excludes", "io.unitycatalog:unitycatalog-client")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config(
+            "spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        )
         .getOrCreate()
     )
     yield session

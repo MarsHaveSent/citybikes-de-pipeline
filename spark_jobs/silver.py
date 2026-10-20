@@ -13,6 +13,8 @@ from pyspark.sql.types import ArrayType, DoubleType, StringType, StructField, St
 log = logging.getLogger("citybikes.silver")
 
 SILVER_PATH = "/citybikes/silver"
+# Неделя версий для time travel, файлы старше VACUUM удаляет
+RETENTION_HOURS = 168
 
 LOCATION_SCHEMA = StructType(
     [
@@ -152,9 +154,17 @@ def null_shares(df: DataFrame, columns: list[str]) -> dict[str, float]:
 
 
 def write(spark: SparkSession, df: DataFrame, path: str, check_columns: list[str]) -> None:
-    # Данных мало (~100 тыс. строк), один файл вместо файла на каждую партицию
-    df.coalesce(1).write.mode("overwrite").parquet(path)
-    written = spark.read.parquet(path)
+    # Данных мало (~100 тыс. строк), один файл вместо файла на каждую партицию.
+    # Silver целиком пересобирается из bronze, поэтому схема таблицы следует за кодом
+    (
+        df.coalesce(1)
+        .write.format("delta")
+        .mode("overwrite")
+        .option("overwriteSchema", "true")
+        .save(path)
+    )
+    spark.sql(f"VACUUM delta.`{path}` RETAIN {RETENTION_HOURS} HOURS")
+    written = spark.read.format("delta").load(path)
     shares = null_shares(written, check_columns)
     log.info("%s: %d строк, доля NULL %s", path, written.count(), shares)
 

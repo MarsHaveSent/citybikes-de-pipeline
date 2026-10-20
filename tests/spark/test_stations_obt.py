@@ -1,3 +1,5 @@
+import pytest
+from pyspark.errors import AnalysisException
 from pyspark.sql import functions as F
 
 from spark_jobs.silver import transform_networks, transform_stations
@@ -64,13 +66,24 @@ def test_rewriting_snapshot_keeps_other_days(spark, networks_df, stations_df, tm
     stations = transform_stations(stations_df())
     path = str(tmp_path / "stations_obt")
 
-    write_snapshot(build_obt(networks, stations, "2026-10-17"), path)
-    write_snapshot(build_obt(networks, stations, "2026-10-18"), path)
+    for day in ("2026-10-17", "2026-10-18"):
+        write_snapshot(build_obt(networks, stations, day), path, day)
     renamed = networks.withColumn("name", F.lit("Bubi renamed"))
-    write_snapshot(build_obt(renamed, stations, "2026-10-18"), path)
+    write_snapshot(build_obt(renamed, stations, "2026-10-18"), path, "2026-10-18")
 
-    rows = spark.read.parquet(path).orderBy("snapshot_date").collect()
+    rows = spark.read.format("delta").load(path).orderBy("snapshot_date").collect()
     assert [(str(r.snapshot_date), r.network_name) for r in rows] == [
         ("2026-10-17", "Bubi"),
         ("2026-10-18", "Bubi renamed"),
     ]
+
+
+def test_snapshot_rejects_rows_of_other_date(spark, networks_df, stations_df, tmp_path):
+    networks = transform_networks(networks_df({"id": "bubi", "name": "Bubi"}))
+    obt = build_obt(networks, transform_stations(stations_df()), "2026-10-18")
+    path = str(tmp_path / "stations_obt")
+    write_snapshot(obt, path, "2026-10-18")
+
+    with pytest.raises(AnalysisException, match="DELTA_REPLACE_WHERE_MISMATCH"):
+        write_snapshot(obt, path, "2026-10-17")
+    assert spark.read.format("delta").load(path).count() == 1

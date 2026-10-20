@@ -17,6 +17,7 @@ log = logging.getLogger("citybikes.stations_obt")
 
 SILVER_PATH = "/citybikes/silver"
 OBT_PATH = "/citybikes/gold/stations_obt"
+RETENTION_HOURS = 168
 
 
 def build_obt(networks: DataFrame, stations: DataFrame, snapshot_date: str) -> DataFrame:
@@ -57,15 +58,16 @@ def build_obt(networks: DataFrame, stations: DataFrame, snapshot_date: str) -> D
     )
 
 
-def write_snapshot(obt: DataFrame, path: str) -> None:
-    # dynamic: overwrite заменяет только партиции, которые есть в записываемых данных.
-    # В режиме по умолчанию Spark удалил бы всю витрину вместе с прошлыми снимками
+def write_snapshot(obt: DataFrame, path: str, snapshot_date: str) -> None:
+    # replaceWhere: overwrite заменяет только снимок за эту дату, прошлые остаются.
+    # Строку с другой датой Delta не запишет, а без условия overwrite удалил бы всю витрину
     (
         obt.coalesce(1)
-        .write.mode("overwrite")
-        .option("partitionOverwriteMode", "dynamic")
+        .write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"snapshot_date = DATE'{snapshot_date}'")
         .partitionBy("snapshot_date")
-        .parquet(path)
+        .save(path)
     )
 
 
@@ -79,12 +81,18 @@ def main() -> None:
     )
     try:
         obt = build_obt(
-            spark.read.parquet(f"{SILVER_PATH}/networks"),
-            spark.read.parquet(f"{SILVER_PATH}/stations"),
+            spark.read.format("delta").load(f"{SILVER_PATH}/networks"),
+            spark.read.format("delta").load(f"{SILVER_PATH}/stations"),
             snapshot_date,
         )
-        write_snapshot(obt, OBT_PATH)
-        written = spark.read.parquet(OBT_PATH).filter(F.col("snapshot_date") == snapshot_date)
+        write_snapshot(obt, OBT_PATH, snapshot_date)
+        # Удаляет только файлы, заменённые перезапусками за ту же дату
+        spark.sql(f"VACUUM delta.`{OBT_PATH}` RETAIN {RETENTION_HOURS} HOURS")
+        written = (
+            spark.read.format("delta")
+            .load(OBT_PATH)
+            .filter(F.col("snapshot_date") == snapshot_date)
+        )
         log.info(
             "%s, снимок %s: %d строк, сетей без станций: %d",
             OBT_PATH,
