@@ -55,7 +55,7 @@ uv run pytest
 Тесты из `tests/integration` работают с PostgreSQL и ClickHouse и без переменных `TEST_DATABASE_URL` и `TEST_CLICKHOUSE_URL` пропускаются. Каждый тест создаёт себе отдельную схему (базу в ClickHouse) и удаляет её после себя, поэтому подойдут любые серверы, например временные контейнеры:
 
 ```bash
-docker run -d --rm --name pg-test -e POSTGRES_PASSWORD=test -p 127.0.0.1:15499:5432 postgres:17
+docker run -d --rm --name pg-test -e POSTGRES_PASSWORD=test -p 127.0.0.1:15499:5432 postgres:17.11-trixie
 docker run -d --rm --name ch-test -e CLICKHOUSE_USER=test -e CLICKHOUSE_PASSWORD=test -p 127.0.0.1:18123:8123 clickhouse/clickhouse-server:26.8.32.14
 TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15499/postgres \
   TEST_CLICKHOUSE_URL=http://test:test@127.0.0.1:18123 uv run pytest

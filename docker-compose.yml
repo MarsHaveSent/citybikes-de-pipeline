@@ -46,7 +46,8 @@ x-spark-common: &spark-common
 
 services:
   postgres:
-    image: postgres:17
+    # Точная версия и ОС образа
+    image: postgres:17.11-trixie
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
