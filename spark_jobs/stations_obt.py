@@ -17,6 +17,9 @@ log = logging.getLogger("citybikes.stations_obt")
 
 SILVER_PATH = "/citybikes/silver"
 OBT_PATH = "/citybikes/gold/stations_obt"
+# Снимок дня для ClickHouse: не читает Delta из HDFS, читает parquet-файлы самой Delta-таблицы
+# перезаписывается каждым запуском
+EXPORT_PATH = "/citybikes/export/stations_obt"
 RETENTION_HOURS = 168
 
 
@@ -93,6 +96,7 @@ def main() -> None:
             .load(OBT_PATH)
             .filter(F.col("snapshot_date") == snapshot_date)
         )
+        written.coalesce(1).write.mode("overwrite").parquet(EXPORT_PATH)
         log.info(
             "%s, снимок %s: %d строк, сетей без станций: %d",
             OBT_PATH,

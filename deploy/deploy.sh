@@ -18,6 +18,9 @@ set_env() {
 git fetch --quiet origin main
 git reset --quiet --hard "$SHA"
 
+# Пароли для сервисов, добавленных в .env.example после прошлого деплоя; старые ключи не меняются
+python3 scripts/init_env.py
+
 # DAG'и, код и SQL смонтированы в контейнеры из этого каталога и обновляются вместе с git.
 # Образы меняются, только если менялись их файлы в docker/
 for name in airflow spark hadoop; do

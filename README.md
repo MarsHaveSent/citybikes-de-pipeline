@@ -18,9 +18,11 @@ Python 3.12, Apache Airflow 3, PostgreSQL, Apache Spark, HDFS, Delta Lake, Click
 |---|---|---|
 | bronze | PostgreSQL | Сети и станции в том виде, в каком их отдаёт API, лог изменений станций, погода |
 | silver | HDFS `/citybikes/silver`, Delta | Очищенные сети и станции: JSON-поля разобраны, типы приведены, время в UTC |
-| gold | HDFS `/citybikes/gold`, Delta | Витрины: `stations_obt` — плоская таблица станций с атрибутами сетей, срез инфраструктуры. Раз в сутки пишется снимок в партицию `snapshot_date`: внутри дня данные не меняются, сравнение снимков показывает, как растёт сеть станций |
+| gold | HDFS `/citybikes/gold`, Delta → ClickHouse | Витрины: `stations_obt` — плоская таблица станций с атрибутами сетей, срез инфраструктуры. Раз в сутки пишется снимок в партицию `snapshot_date`: внутри дня данные не меняются, сравнение снимков показывает, как растёт сеть станций |
 
 Silver и gold — таблицы Delta Lake. Запись атомарна: если джоба упадёт посередине, читатели видят предыдущую версию таблицы, а не пустую или частично записанную папку. Silver пересобирается целиком, снимок в gold заменяется через `replaceWhere` только за свою дату, поэтому перезапуск не задевает другие дни. `VACUUM` после записи хранит версии за неделю: на них работает time travel (`VERSION AS OF`), более старые файлы удаляются. Delta 4.1.0 выбран под Spark 4.1: более новые версии тянут собственные Hadoop-клиент и Jackson, которые конфликтуют с библиотеками Spark. Spark зафиксирован на 4.1.1: Delta 4.1.0 собрана под Spark 4.1.0, а начиная с 4.1.2 в Spark изменены внутренние классы, и часть команд Delta (`CONVERT TO DELTA`, API `DeltaTable`) падает. В 4.1.1 эти классы те же, что в 4.1.0.
+
+Снимок витрины попадает в ClickHouse так: Spark выгружает день отдельным parquet-файлом в `/citybikes/export/stations_obt`, ClickHouse читает его сам табличной функцией `hdfs()` во временную таблицу, сверяет дату и число строк и подменяет день в `citybikes.stations_obt` одной командой `REPLACE PARTITION`. Подмена атомарна: запросы видят либо прежний снимок дня, либо новый. Прямо из Delta-таблицы ClickHouse читать не может: его движок Delta Lake не поддерживает HDFS, а parquet-файлы самой таблицы содержат и заменённые версии снимков. Spark JDBC отпал из-за колонок-массивов: у Spark нет диалекта ClickHouse, и массивы по JDBC не пишутся.
 
 Spark читает bronze напрямую из PostgreSQL по JDBC. В продакшене для этого берут реплику или поток изменений (CDC), чтобы аналитические запросы не нагружали рабочую базу; здесь источник служит только пайплайну.
 
@@ -33,7 +35,7 @@ Spark читает bronze напрямую из PostgreSQL по JDBC. В про�
 Нужны Docker и Python 3.
 
 ```bash
-python scripts/init_env.py   # создаёт .env со случайными паролями и ключами
+python scripts/init_env.py   # создаёт .env со случайными паролями; в существующий дописывает новые ключи
 docker compose up -d
 ```
 
@@ -41,6 +43,7 @@ docker compose up -d
 - PostgreSQL: `localhost:15432`, БД `citybikes`, пользователь `citybikes`
 - Spark Master UI: http://localhost:8081, Spark Worker UI: http://localhost:8082
 - HDFS NameNode UI: http://localhost:9870
+- ClickHouse: http://localhost:8123, БД `citybikes`, пользователь `citybikes`, пароль `CLICKHOUSE_PASSWORD` из `.env`
 
 ## Тесты
 
@@ -49,14 +52,16 @@ uv sync
 uv run pytest
 ```
 
-Тесты из `tests/integration` работают с PostgreSQL, без переменной `TEST_DATABASE_URL` пропускаются. Каждый тест создаёт себе отдельную схему и удаляет её после себя, поэтому подойдёт любая база, например временный контейнер:
+Тесты из `tests/integration` работают с PostgreSQL и ClickHouse и без переменных `TEST_DATABASE_URL` и `TEST_CLICKHOUSE_URL` пропускаются. Каждый тест создаёт себе отдельную схему (базу в ClickHouse) и удаляет её после себя, поэтому подойдут любые серверы, например временные контейнеры:
 
 ```bash
 docker run -d --rm --name pg-test -e POSTGRES_PASSWORD=test -p 127.0.0.1:15499:5432 postgres:17
-TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15499/postgres uv run pytest
+docker run -d --rm --name ch-test -e CLICKHOUSE_USER=test -e CLICKHOUSE_PASSWORD=test -p 127.0.0.1:18123:8123 clickhouse/clickhouse-server:26.8.32.14
+TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15499/postgres \
+  TEST_CLICKHOUSE_URL=http://test:test@127.0.0.1:18123 uv run pytest
 ```
 
-В CI на каждый пуш запускаются pre-commit, все тесты с PostgreSQL и проверка DAGов в образе Airflow (`scripts/check_dags.py`).
+В CI на каждый пуш запускаются pre-commit, все тесты с PostgreSQL и ClickHouse и проверка DAGов в образе Airflow (`scripts/check_dags.py`).
 
 ## Деплой
 

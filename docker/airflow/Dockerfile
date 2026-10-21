@@ -26,4 +26,5 @@ ENV JAVA_HOME=/opt/java/openjdk \
 # Версия apache-airflow указана явно, чтобы pip не обновил сам Airflow вместе с провайдером
 RUN pip install --no-cache-dir \
     "apache-airflow==3.3.2" \
-    "apache-airflow-providers-apache-spark==6.3.2"
+    "apache-airflow-providers-apache-spark==6.3.2" \
+    "clickhouse-connect==1.11.0"

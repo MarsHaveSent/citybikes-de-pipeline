@@ -1,4 +1,4 @@
-from scripts.init_env import render_env
+from scripts.init_env import missing_lines, render_env
 
 EXAMPLE = """# комментарий
 EMPTY_PASSWORD=
@@ -18,3 +18,8 @@ def test_fills_only_empty_values():
 
 def test_keeps_comments():
     assert render_env(EXAMPLE).startswith("# комментарий\n")
+
+
+def test_missing_lines_adds_only_new_keys():
+    added = missing_lines(EXAMPLE, "EMPTY_PASSWORD=old\nPRESET=other\n")
+    assert [line.partition("=")[0] for line in added] == ["AIRFLOW_FERNET_KEY"]

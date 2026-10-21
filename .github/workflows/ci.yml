@@ -43,8 +43,21 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-retries 10
+      clickhouse:
+        # Версия как в docker-compose.yml
+        image: clickhouse/clickhouse-server:26.8.32.14
+        env:
+          CLICKHOUSE_USER: test
+          CLICKHOUSE_PASSWORD: test
+        ports:
+          - 8123:8123
+        options: >-
+          --health-cmd "wget --spider -q http://localhost:8123/ping"
+          --health-interval 5s
+          --health-retries 10
     env:
       TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
+      TEST_CLICKHOUSE_URL: http://test:test@localhost:8123
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0

@@ -16,6 +16,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW_CONN_CITYBIKES_DB: postgresql://citybikes:${CITYBIKES_DB_PASSWORD:?}@postgres:5432/citybikes
     AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type": "spark", "host": "spark://spark-master", "port": 7077}'
+    AIRFLOW_CONN_CITYBIKES_CLICKHOUSE: clickhouse://citybikes:${CLICKHOUSE_PASSWORD:?}@clickhouse:8123/citybikes
     HADOOP_USER_NAME: citybikes
     PYTHONPATH: /opt/airflow/src
   volumes:
@@ -199,8 +200,33 @@ services:
       spark-master:
         condition: service_healthy
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.32.14
+    environment:
+      CLICKHOUSE_DB: citybikes
+      CLICKHOUSE_USER: citybikes
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      # Пользователь сможет создавать других пользователей SQL-командами
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./docker/clickhouse/low-memory.xml:/etc/clickhouse-server/config.d/low-memory.xml:ro
+    ports:
+      - "127.0.0.1:8123:8123"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
 volumes:
   postgres-data:
   airflow-logs:
   hdfs-namenode:
   hdfs-datanode:
+  clickhouse-data:
