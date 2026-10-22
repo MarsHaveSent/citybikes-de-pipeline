@@ -15,6 +15,7 @@ from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import DAG
 
 from citybikes.api import CityBikesClient
+from citybikes.monitoring import CALLBACKS
 from citybikes.settings import CRAWL_BATCH_SIZE, POSTGRES_CONN_ID, RATE_LIMIT_RESERVE
 from citybikes.sync import crawl_stations
 
@@ -34,6 +35,7 @@ dag = DAG(
     catchup=False,
     max_active_runs=1,
     default_args={
+        **CALLBACKS,
         "retries": 2,
         "retry_delay": timedelta(minutes=5),
     },

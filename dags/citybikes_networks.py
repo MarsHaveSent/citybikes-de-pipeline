@@ -13,18 +13,19 @@ from airflow.sdk import DAG
 
 from citybikes import db
 from citybikes.api import CityBikesClient
+from citybikes.monitoring import CALLBACKS
 from citybikes.settings import POSTGRES_CONN_ID
 
 log = logging.getLogger(__name__)
 
 
-def load_networks() -> int:
+def load_networks() -> dict[str, int]:
     networks = CityBikesClient().get_networks()
     with closing(PostgresHook(POSTGRES_CONN_ID).get_conn()) as conn:
         count = db.upsert_networks(conn, networks, datetime.now(UTC))
         conn.commit()
     log.info("Загружено сетей: %d", count)
-    return count
+    return {"networks": count}
 
 
 dag = DAG(
@@ -36,6 +37,7 @@ dag = DAG(
     catchup=False,
     max_active_runs=1,
     default_args={
+        **CALLBACKS,
         "retries": 2,
         "retry_delay": timedelta(minutes=5),
     },

@@ -23,3 +23,8 @@ def test_keeps_comments():
 def test_missing_lines_adds_only_new_keys():
     added = missing_lines(EXAMPLE, "EMPTY_PASSWORD=old\nPRESET=other\n")
     assert [line.partition("=")[0] for line in added] == ["AIRFLOW_FERNET_KEY"]
+
+
+def test_manual_keys_stay_empty():
+    env = render_env("SMTP_PASSWORD=\nSMTP_HOST=smtp.mail.ru\n")
+    assert env == "SMTP_PASSWORD=\nSMTP_HOST=smtp.mail.ru\n"

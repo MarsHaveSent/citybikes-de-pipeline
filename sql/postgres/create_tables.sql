@@ -80,3 +80,33 @@ CREATE TABLE IF NOT EXISTS weather_hourly (
     fetched_at           timestamptz NOT NULL,
     PRIMARY KEY (network_id, hour)
 );
+
+-- Журнал задач пайплайна: одна строка на попытку задачи, пишут колбэки DAG'ов
+-- (citybikes.monitoring). metrics - то, что вернула задача: синхронизировано сетей, строк и т.п.
+CREATE TABLE IF NOT EXISTS ops_task_runs (
+    dag_id      text NOT NULL,
+    task_id     text NOT NULL,
+    run_id      text NOT NULL,
+    try_number  integer NOT NULL,
+    state       text NOT NULL,
+    started_at  timestamptz,
+    finished_at timestamptz NOT NULL,
+    duration_s  real,
+    metrics     jsonb,
+    error       text,
+    PRIMARY KEY (dag_id, task_id, run_id, try_number)
+);
+CREATE INDEX IF NOT EXISTS ops_task_runs_finished_at_idx ON ops_task_runs (finished_at);
+
+-- Результаты проверок качества данных (citybikes.dq)
+CREATE TABLE IF NOT EXISTS ops_dq_results (
+    checked_at timestamptz NOT NULL,
+    layer      text NOT NULL,
+    check_name text NOT NULL,
+    value      double precision,
+    warn_at    double precision,
+    fail_at    double precision,
+    status     text NOT NULL,
+    run_id     text,
+    PRIMARY KEY (check_name, checked_at)
+);

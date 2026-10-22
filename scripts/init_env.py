@@ -18,11 +18,15 @@ def generate_secret(key: str) -> str:
     return secrets.token_hex(16)
 
 
+# Внешние учётные данные остаются пустыми до ручного заполнения
+MANUAL_KEYS = {"SMTP_USER", "SMTP_PASSWORD", "ALERT_EMAIL_TO"}
+
+
 def render_env(example: str) -> str:
     lines = []
     for line in example.splitlines():
         key, sep, value = line.partition("=")
-        if sep and not line.startswith("#") and not value:
+        if sep and not line.startswith("#") and not value and key not in MANUAL_KEYS:
             line = f"{key}={generate_secret(key)}"
         lines.append(line)
     return "\n".join(lines) + "\n"

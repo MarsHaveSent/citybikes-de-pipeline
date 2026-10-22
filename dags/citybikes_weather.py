@@ -12,13 +12,14 @@ from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import DAG
 
 from citybikes import db
+from citybikes.monitoring import CALLBACKS
 from citybikes.settings import POLLED_NETWORKS, POSTGRES_CONN_ID
 from citybikes.weather import fetch_weather, weather_rows
 
 log = logging.getLogger(__name__)
 
 
-def load_weather() -> int:
+def load_weather() -> dict[str, int]:
     with closing(PostgresHook(POSTGRES_CONN_ID).get_conn()) as conn:
         locations = db.select_network_locations(conn, POLLED_NETWORKS)
         missing = set(POLLED_NETWORKS) - {network_id for network_id, _, _ in locations}
@@ -28,7 +29,7 @@ def load_weather() -> int:
         count = db.upsert_weather(conn, rows)
         conn.commit()
     log.info("Записано часов погоды: %d по %d сетям", count, len(locations))
-    return count
+    return {"hours": count, "networks": len(locations)}
 
 
 dag = DAG(
@@ -41,6 +42,7 @@ dag = DAG(
     catchup=False,
     max_active_runs=1,
     default_args={
+        **CALLBACKS,
         "retries": 2,
         "retry_delay": timedelta(minutes=5),
     },

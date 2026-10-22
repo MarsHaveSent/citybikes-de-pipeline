@@ -19,6 +19,12 @@ x-airflow-common: &airflow-common
     AIRFLOW_CONN_CITYBIKES_CLICKHOUSE: clickhouse://citybikes:${CLICKHOUSE_PASSWORD:?}@clickhouse:8123/citybikes
     HADOOP_USER_NAME: citybikes
     PYTHONPATH: /opt/airflow/src
+    # Алерты (citybikes.alerts); без SMTP_USER письма не отправляются
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-465}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
   volumes:
     - ./dags:/opt/airflow/dags:ro
     - ./src:/opt/airflow/src:ro

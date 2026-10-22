@@ -4,20 +4,23 @@
 - gold: One Big Table станций с атрибутами сетей, /citybikes/gold/stations_obt,
   ежедневный снимок в партиции snapshot_date
 - ClickHouse: тот же снимок в citybikes.stations_obt, день подменяется атомарно
+- dq_gold: проверки снимка в ClickHouse, результаты в ops_dq_results
 """
 
 from contextlib import closing
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import clickhouse_connect
 import pendulum
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
+from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import DAG, Connection
 
-from citybikes import clickhouse
+from citybikes import clickhouse, dq
+from citybikes.monitoring import CALLBACKS
 from citybikes.settings import CLICKHOUSE_CONN_ID, OBT_EXPORT_URL, POSTGRES_CONN_ID
 
 SPARK_JOBS = "/opt/airflow/spark_jobs"
@@ -40,7 +43,7 @@ DB_ENV = {
 }
 
 
-def load_clickhouse(snapshot_date: str) -> int:
+def clickhouse_client():
     conn = Connection.get(CLICKHOUSE_CONN_ID)
     params = {
         "host": conn.host,
@@ -51,14 +54,29 @@ def load_clickhouse(snapshot_date: str) -> int:
     # Образ ClickHouse создаёт базу из CLICKHOUSE_DB только при первом старте на пустом томе
     with closing(clickhouse_connect.get_client(**params)) as admin:
         admin.command(f"CREATE DATABASE IF NOT EXISTS {conn.schema}")
-    client = clickhouse_connect.get_client(**params, database=conn.schema)
-    try:
+    return clickhouse_connect.get_client(**params, database=conn.schema)
+
+
+def load_clickhouse(snapshot_date: str) -> dict[str, int]:
+    with closing(clickhouse_client()) as client:
         clickhouse.run_script(client, CLICKHOUSE_DDL)
-        return clickhouse.load_snapshot(
+        rows = clickhouse.load_snapshot(
             client, "stations_obt", snapshot_date, clickhouse.hdfs_parquet(OBT_EXPORT_URL)
         )
-    finally:
-        client.close()
+    return {"rows": rows}
+
+
+def check_gold(snapshot_date: str, run_id: str) -> dict[str, int]:
+    with closing(clickhouse_client()) as client:
+        results = dq.run_checks(
+            lambda sql, params: client.query(sql, parameters=params).result_rows[0][0],
+            dq.GOLD_CHECKS,
+            {"day": snapshot_date},
+        )
+    with closing(PostgresHook(POSTGRES_CONN_ID).get_conn()) as conn:
+        dq.save_results(conn, results, datetime.now(UTC), run_id)
+        conn.commit()
+    return dq.finish(results)
 
 
 dag = DAG(
@@ -71,6 +89,7 @@ dag = DAG(
     catchup=False,
     max_active_runs=1,
     default_args={
+        **CALLBACKS,
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
     },
@@ -103,6 +122,15 @@ load_obt_to_clickhouse = PythonOperator(
     dag=dag,
 )
 
+dq_gold = PythonOperator(
+    task_id="dq_gold",
+    python_callable=check_gold,
+    # Повтор через 5 минут даст тот же результат и второй алерт
+    retries=0,
+    op_kwargs={"snapshot_date": SNAPSHOT_DATE, "run_id": "{{ run_id }}"},
+    dag=dag,
+)
+
 end = EmptyOperator(task_id="end", dag=dag)
 
-start >> build_silver >> build_obt >> load_obt_to_clickhouse >> end
+start >> build_silver >> build_obt >> load_obt_to_clickhouse >> dq_gold >> end
