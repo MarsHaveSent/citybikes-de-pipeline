@@ -3,15 +3,17 @@ from datetime import UTC, datetime
 import pytest
 import requests
 
-from citybikes.weather import FORECAST_URL, fetch_weather, weather_rows
+from citybikes.weather import FORECAST_URL, fetch_weather, timezone_rows, weather_rows
 
 LOCATIONS = [("budapest", 47.5, 19.04), ("barcelona", 41.39, 2.16)]
 NOW = datetime(2026, 10, 12, 10, 30, tzinfo=UTC)
 
 
-def point(temperatures):
-    times = ["2026-10-12T09:00", "2026-10-12T10:00", "2026-10-12T11:00"]
+def point(temperatures, timezone="Europe/Budapest"):
+    # timeformat=unixtime: время в секундах от эпохи, то есть в UTC при любом timezone
+    times = [int(datetime(2026, 10, 12, h, tzinfo=UTC).timestamp()) for h in (9, 10, 11)]
     return {
+        "timezone": timezone,
         "hourly": {
             "time": times,
             "temperature_2m": temperatures,
@@ -19,7 +21,7 @@ def point(temperatures):
             "precipitation": [0.0, 0.4, 1.2],
             "wind_speed_10m": [5.0, 6.0, 7.0],
             "weather_code": [1, 61, 63],
-        }
+        },
     }
 
 
@@ -50,3 +52,12 @@ def test_http_error_is_raised(requests_mock):
     requests_mock.get(FORECAST_URL, status_code=500)
     with pytest.raises(requests.HTTPError):
         fetch_weather(LOCATIONS)
+
+
+def test_timezone_rows_follow_location_order():
+    payload = [point([1, 2, 3]), point([1, 2, 3], timezone="Europe/Madrid")]
+
+    assert timezone_rows(LOCATIONS, payload, NOW) == [
+        ("budapest", "Europe/Budapest", NOW),
+        ("barcelona", "Europe/Madrid", NOW),
+    ]

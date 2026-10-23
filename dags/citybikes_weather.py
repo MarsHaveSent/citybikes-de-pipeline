@@ -1,4 +1,4 @@
-"""Почасовая погода Open-Meteo для опрашиваемых сетей -> weather_hourly."""
+"""Почасовая погода Open-Meteo для опрашиваемых сетей -> weather_hourly, network_timezones."""
 
 import logging
 from contextlib import closing
@@ -14,7 +14,7 @@ from airflow.sdk import DAG
 from citybikes import db
 from citybikes.monitoring import CALLBACKS
 from citybikes.settings import POLLED_NETWORKS, POSTGRES_CONN_ID
-from citybikes.weather import fetch_weather, weather_rows
+from citybikes.weather import fetch_weather, timezone_rows, weather_rows
 
 log = logging.getLogger(__name__)
 
@@ -25,8 +25,9 @@ def load_weather() -> dict[str, int]:
         missing = set(POLLED_NETWORKS) - {network_id for network_id, _, _ in locations}
         if missing:
             log.warning("Нет координат для сетей: %s", ", ".join(sorted(missing)))
-        rows = weather_rows(locations, fetch_weather(locations), datetime.now(UTC))
-        count = db.upsert_weather(conn, rows)
+        payload, now = fetch_weather(locations), datetime.now(UTC)
+        count = db.upsert_weather(conn, weather_rows(locations, payload, now))
+        db.upsert_network_timezones(conn, timezone_rows(locations, payload, now))
         conn.commit()
     log.info("Записано часов погоды: %d по %d сетям", count, len(locations))
     return {"hours": count, "networks": len(locations)}

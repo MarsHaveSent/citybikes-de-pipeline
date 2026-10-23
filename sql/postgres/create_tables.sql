@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS schema_fields (
     PRIMARY KEY (entity, field)
 );
 
+-- Часовой пояс сети: Open-Meteo определяет его по координатам вместе с погодой.
+CREATE TABLE IF NOT EXISTS network_timezones (
+    network_id text PRIMARY KEY,
+    timezone   text NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+
 -- Почасовая погода в городах опрашиваемых сетей (Open-Meteo).
 -- Осадки - сумма за час, который заканчивается в hour, остальное - значение на момент hour
 CREATE TABLE IF NOT EXISTS weather_hourly (

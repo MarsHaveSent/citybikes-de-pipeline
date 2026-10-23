@@ -22,25 +22,11 @@ from airflow.sdk import DAG, Connection
 from citybikes import clickhouse, dq
 from citybikes.monitoring import CALLBACKS
 from citybikes.settings import CLICKHOUSE_CONN_ID, OBT_EXPORT_URL, POSTGRES_CONN_ID
+from citybikes.spark_env import POSTGRES_ENV
 
 SPARK_JOBS = "/opt/airflow/spark_jobs"
 CLICKHOUSE_DDL = Path("/opt/airflow/sql/clickhouse/create_tables.sql")
 SNAPSHOT_DATE = "{{ dag_run.run_after | ds }}"
-
-
-def conn_field(field: str) -> str:
-    return "{{ conn." + POSTGRES_CONN_ID + "." + field + " }}"
-
-
-# Драйвер Spark работает в этом контейнере и сам передаёт параметры подключения executor'ам.
-# Пароль из подключения Airflow маскирует в логах и интерфейсе
-DB_ENV = {
-    "CITYBIKES_DB_HOST": conn_field("host"),
-    "CITYBIKES_DB_PORT": conn_field("port"),
-    "CITYBIKES_DB_NAME": conn_field("schema"),
-    "CITYBIKES_DB_USER": conn_field("login"),
-    "CITYBIKES_DB_PASSWORD": conn_field("password"),
-}
 
 
 def clickhouse_client():
@@ -102,7 +88,7 @@ build_silver = SparkSubmitOperator(
     task_id="build_silver",
     application=f"{SPARK_JOBS}/silver.py",
     name="citybikes_silver",
-    env_vars=DB_ENV,
+    env_vars=POSTGRES_ENV,
     dag=dag,
 )
 

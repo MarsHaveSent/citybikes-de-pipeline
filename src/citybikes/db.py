@@ -152,6 +152,15 @@ def upsert_weather(conn: Connection, rows: list[tuple]) -> int:
     return len(rows)
 
 
+def upsert_network_timezones(conn: Connection, rows: list[tuple]) -> int:
+    sql = _upsert_sql(
+        "network_timezones", ("network_id", "timezone", "updated_at"), key=("network_id",)
+    )
+    with conn.cursor() as cur:
+        cur.executemany(sql, rows)
+    return len(rows)
+
+
 @dataclass
 class StationsSyncResult:
     stations: int

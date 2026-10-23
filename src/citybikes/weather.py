@@ -32,7 +32,10 @@ def fetch_weather(
             # Прошедшие сутки перезаписываются каждый час: Open-Meteo уточняет недавние значения
             "past_days": 1,
             "forecast_days": 1,
-            "timezone": "GMT",
+            # auto - пояс по координатам, он нужен витринам спроса для местных суток;
+            # время приходит в в UTC
+            "timezone": "auto",
+            "timeformat": "unixtime",
         },
         headers={"User-Agent": USER_AGENT},
         timeout=30,
@@ -53,7 +56,7 @@ def weather_rows(
     for (network_id, _, _), point in zip(locations, payload, strict=True):
         hourly = point["hourly"]
         for i, time in enumerate(hourly["time"]):
-            hour = datetime.fromisoformat(time).replace(tzinfo=UTC)
+            hour = datetime.fromtimestamp(time, UTC)
             if hour > now:
                 continue
             rows.append(
@@ -65,3 +68,15 @@ def weather_rows(
                 )
             )
     return rows
+
+
+def timezone_rows(
+    locations: Sequence[tuple[str, float, float]],
+    payload: list[dict[str, Any]],
+    now: datetime,
+) -> list[tuple]:
+    """Строки для network_timezones: пояс, который Open-Meteo определил по координатам."""
+    return [
+        (network_id, point["timezone"], now)
+        for (network_id, _, _), point in zip(locations, payload, strict=True)
+    ]

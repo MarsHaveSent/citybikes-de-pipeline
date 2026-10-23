@@ -136,3 +136,12 @@ def test_weather_upsert_is_idempotent(conn):
     db.upsert_weather(conn, [(*row[:2], 13.0, *row[3:7], T1)])
 
     assert fetch(conn, "SELECT temperature, fetched_at FROM weather_hourly") == [(13.0, T1)]
+
+
+def test_network_timezones_upsert(conn):
+    db.upsert_network_timezones(conn, [("net", "Europe/Berlin", T0)])
+    db.upsert_network_timezones(conn, [("net", "Europe/Paris", T1)])
+
+    assert fetch(conn, "SELECT timezone, updated_at FROM network_timezones") == [
+        ("Europe/Paris", T1)
+    ]
