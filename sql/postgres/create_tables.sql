@@ -43,6 +43,18 @@ LANGUAGE sql IMMUTABLE AS $$
                 THEN (extra ->> 'ebikes')::numeric::integer END
 $$;
 
+-- Журнал синхронизаций: строка на каждый опрос или обход сети, даже без изменений.
+-- Лог ниже пишет только изменения, и по нему не отличить затишье на станциях от простоя
+-- опроса;
+CREATE TABLE IF NOT EXISTS network_syncs (
+    network_id text NOT NULL,
+    synced_at  timestamptz NOT NULL,
+    stations   integer NOT NULL,
+    changes    integer NOT NULL,
+    PRIMARY KEY (network_id, synced_at)
+);
+CREATE INDEX IF NOT EXISTS network_syncs_synced_at_idx ON network_syncs (synced_at);
+
 -- Лог изменений станций: строка появляется, только когда изменилось число велосипедов,
 -- свободных слотов или электровелосипедов. Без FK на stations: история переживает удаление станции.
 CREATE TABLE IF NOT EXISTS station_status_log (

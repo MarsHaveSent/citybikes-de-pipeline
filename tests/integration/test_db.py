@@ -145,3 +145,14 @@ def test_network_timezones_upsert(conn):
     assert fetch(conn, "SELECT timezone, updated_at FROM network_timezones") == [
         ("Europe/Paris", T1)
     ]
+
+
+def test_every_sync_is_journaled_even_without_changes(conn):
+    add_network(conn)
+    db.sync_stations(conn, "net", [station("a", 1), station("b", 2)], T0)
+    db.sync_stations(conn, "net", [station("a", 1), station("b", 2)], T1)
+
+    assert fetch(conn, "SELECT synced_at, stations, changes FROM network_syncs ORDER BY 1") == [
+        (T0, 2, 2),
+        (T1, 2, 0),
+    ]

@@ -227,6 +227,11 @@ def sync_stations(
             "UPDATE networks SET stations_synced_at = %s WHERE id = %s",
             (synced_at, network_id),
         )
+        cur.execute(
+            "INSERT INTO network_syncs (network_id, synced_at, stations, changes)"
+            " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            (network_id, synced_at, len(rows), changes),
+        )
     return StationsSyncResult(stations=len(rows), changes=changes)
 
 
