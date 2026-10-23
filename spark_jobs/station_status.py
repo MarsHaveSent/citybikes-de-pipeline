@@ -82,6 +82,11 @@ def watermark(spark: SparkSession, path: str) -> datetime | None:
         return None
 
 
+def row_count(spark: SparkSession, path: str) -> int:
+    # Delta берёт число строк из статистики журнала, файлы данных не читаются
+    return spark.read.format("delta").load(path).count()
+
+
 def merge(spark: SparkSession, batch: DataFrame, path: str, table_exists: bool) -> None:
     if not table_exists:
         batch.write.format("delta").mode("append").partitionBy("observed_date").save(path)
@@ -114,6 +119,7 @@ def main() -> None:
     try:
         loaded = watermark(spark, STATUS_PATH)
         since = loaded - LATE_ROWS_MARGIN if loaded else None
+        before = row_count(spark, STATUS_PATH) if loaded else 0
         batch = to_silver(read_log(spark, since)).cache()
         rows = batch.count()
         merge(
@@ -123,18 +129,12 @@ def main() -> None:
             table_exists=loaded is not None,
         )
         spark.sql(f"VACUUM delta.`{STATUS_PATH}` RETAIN {RETENTION_HOURS} HOURS")
-        metrics = (
-            spark.sql(f"DESCRIBE HISTORY delta.`{STATUS_PATH}` LIMIT 5")
-            .filter(F.col("operation").isin("MERGE", "WRITE"))
-            .select("operationMetrics")
-            .first()
-        )
         log.info(
-            "%s: прочитано %d строк начиная с %s, метрики записи %s, загружено до %s",
+            "%s: прочитано %d строк начиная с %s, добавлено %d, загружено до %s",
             STATUS_PATH,
             rows,
             since or "начала истории",
-            metrics[0] if metrics else None,
+            row_count(spark, STATUS_PATH) - before,
             watermark(spark, STATUS_PATH),
         )
     finally:
