@@ -81,7 +81,7 @@ def parse_timestamp(col: str | Column) -> Column:
 # Юридическая форма в конце названия: "Nextbike GmbH" и "nextbike GmbH" - один оператор
 LEGAL_FORM = (
     r"(?i)[\s,]+(gmbh|inc|llc|ltd|limited|corp|corporation|co|company|ag|plc|oy|ab|a/s|as"
-    r"|s\.?a|s\.?l|s\.?p\.?a|s\.?r\.?l|b\.?v|sas|sarl)\.?$"
+    r"|s\.?a\.?\s+de\s+c\.?v|s\.?a|s\.?l|s\.?p\.?a|s\.?r\.?l|b\.?v|sas|sarl)\.?$"
 )
 # Варианты, которые не сводятся отбрасыванием формы, и названия с особым написанием.
 # Ключ - название без формы в нижнем регистре, значение - как показывать на дашбордах

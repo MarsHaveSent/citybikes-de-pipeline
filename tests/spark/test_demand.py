@@ -116,3 +116,25 @@ def test_weather_of_hour_end_is_joined_to_the_hour(spark, hourly, timezones):
     assert rows[12].precipitation == pytest.approx(1.2)
     assert rows[13].precipitation is None
     assert (rows[12].pickups, rows[12].stations) == (5, 1)
+
+
+def test_recomputed_days_replace_previous_run(spark, tmp_path):
+    from spark_jobs.demand import write_days
+
+    def run(rows, first, last):
+        df = spark.createDataFrame(rows, "local_date date, network_id string, pickups int")
+        write_days(
+            df, "station_daily", first, last, str(tmp_path / "gold"), str(tmp_path / "export")
+        )
+
+    d1, d2, d3 = date(2026, 10, 20), date(2026, 10, 21), date(2026, 10, 22)
+    run([(d1, "net", 1), (d2, "net", 2)], d1, d2)
+    # Следующий запуск пересчитывает окно со сдвигом на день: d2 заменяется, d1 остаётся
+    run([(d2, "net", 20), (d3, "net", 3)], d2, d3)
+
+    rows = spark.read.format("delta").load(str(tmp_path / "gold" / "station_daily")).collect()
+    assert sorted((str(r.local_date), r.pickups) for r in rows) == [
+        ("2026-10-20", 1),
+        ("2026-10-21", 20),
+        ("2026-10-22", 3),
+    ]

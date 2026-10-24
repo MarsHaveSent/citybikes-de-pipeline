@@ -221,19 +221,27 @@ def jdbc(spark: SparkSession, table: str) -> DataFrame:
     )
 
 
-def write_days(df: DataFrame, name: str, first: date, last: date) -> None:
+def write_days(
+    df: DataFrame,
+    name: str,
+    first: date,
+    last: date,
+    gold_path: str = GOLD_PATH,
+    export_path: str = EXPORT_PATH,
+) -> None:
     # Пересчитанные дни заменяются целиком; день, который у части сетей ещё не закончился,
     # дозапишется следующим запуском
     (
         df.coalesce(1)
         .write.format("delta")
         .mode("overwrite")
-        .option("replaceWhere", f"local_date BETWEEN DATE'{first}' AND DATE'{last}'")
+        # на BETWEEN при записи в существующую таблицу падает с INTERNAL_ERROR (unresolved object)
+        .option("replaceWhere", f"local_date >= DATE'{first}' AND local_date <= DATE'{last}'")
         .option("mergeSchema", "true")
         .partitionBy("local_date")
-        .save(f"{GOLD_PATH}/{name}")
+        .save(f"{gold_path}/{name}")
     )
-    df.coalesce(1).write.mode("overwrite").parquet(f"{EXPORT_PATH}/{name}")
+    df.coalesce(1).write.mode("overwrite").parquet(f"{export_path}/{name}")
 
 
 def period(args: list[str], now: datetime) -> tuple[date, date]:

@@ -131,6 +131,7 @@ def test_stations_extra_with_mixed_types(stations_df):
         ("YouBike Co., Ltd.", "YouBike"),
         ("Deutsche Bahn AG", "Deutsche Bahn"),
         ("JCDecaux", "JCDecaux"),
+        ("5M2 S.A. de C.V.", "5m2"),
         ("", None),
         (None, None),
     ],
