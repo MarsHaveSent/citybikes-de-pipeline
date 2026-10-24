@@ -3,6 +3,8 @@ CLICKHOUSE_CONN_ID = "citybikes_clickhouse"
 
 # Снимок витрины, который Spark выгружает для ClickHouse (spark_jobs/stations_obt.py)
 OBT_EXPORT_URL = "hdfs://namenode:8020/citybikes/export/stations_obt"
+# Выгрузки витрин спроса, по каталогу на таблицу (spark_jobs/demand.py)
+DEMAND_EXPORT_URL = "hdfs://namenode:8020/citybikes/export"
 
 # Лимит API - 300 запросов в час краулер берёт до 150 сетей за прогон
 # и останавливается раньше, если в окне осталось меньше резерва под частый опрос станций

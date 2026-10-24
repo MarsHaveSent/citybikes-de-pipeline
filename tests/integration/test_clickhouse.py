@@ -60,3 +60,22 @@ def test_null_station_id_becomes_empty_string(ch):
     load_snapshot(ch, "stations_obt", DAY1.isoformat(), source)
 
     assert ch.query("SELECT station_id FROM stations_obt").result_rows == [("",)]
+
+
+def test_load_days_replaces_only_days_present_in_source(ch):
+    from citybikes.clickhouse import load_days
+
+    columns = ["local_date", "network_id", "station_id", "pickups"]
+
+    def fill(rows):
+        ch.command("DROP TABLE IF EXISTS src_daily")
+        ch.command("CREATE TABLE src_daily AS station_daily ENGINE = Memory")
+        ch.insert("src_daily", rows, column_names=columns)
+
+    fill([(DAY1, "bubi", "1", 10), (DAY2, "bubi", "1", 20)])
+    load_days(ch, "station_daily", "src_daily")
+    fill([(DAY2, "bubi", "1", 25)])
+
+    assert load_days(ch, "station_daily", "src_daily") == {DAY2: 1}
+    rows = ch.query("SELECT local_date, pickups FROM station_daily ORDER BY local_date").result_rows
+    assert rows == [(DAY1, 10), (DAY2, 25)]

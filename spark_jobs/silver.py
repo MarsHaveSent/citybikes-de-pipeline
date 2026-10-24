@@ -78,6 +78,36 @@ def parse_timestamp(col: str | Column) -> Column:
     return F.when(parsed >= F.lit(MIN_VALID_TIMESTAMP).cast("timestamp"), parsed)
 
 
+# Юридическая форма в конце названия: "Nextbike GmbH" и "nextbike GmbH" - один оператор
+LEGAL_FORM = (
+    r"(?i)[\s,]+(gmbh|inc|llc|ltd|limited|corp|corporation|co|company|ag|plc|oy|ab|a/s|as"
+    r"|s\.?a|s\.?l|s\.?p\.?a|s\.?r\.?l|b\.?v|sas|sarl)\.?$"
+)
+# Варианты, которые не сводятся отбрасыванием формы, и названия с особым написанием.
+# Ключ - название без формы в нижнем регистре, значение - как показывать на дашбордах
+OPERATOR_NAMES = {
+    "motivate international": "Motivate",
+    "motivate": "Motivate",
+    "pbsc urban solutions": "PBSC",
+    "pbsc": "PBSC",
+    "jcdecaux": "JCDecaux",
+    "youbike": "YouBike",
+    "docomo bike share": "DOCOMO BIKE SHARE",
+    "bcycle": "BCycle",
+}
+
+
+def normalize_operator(col: str | Column) -> Column:
+    """Название компании -> оператор для группировки; без названия - NULL."""
+    name = F.trim(col)
+    # Две формы подряд встречаются ("Co., Ltd."), поэтому проход повторяется
+    for _ in range(2):
+        name = F.regexp_replace(F.regexp_replace(name, LEGAL_FORM, ""), r"[\s,.]+$", "")
+    key = F.lower(name)
+    names = F.create_map(*[F.lit(x) for pair in OPERATOR_NAMES.items() for x in pair])
+    return F.when(key != "", F.coalesce(names[key], F.initcap(key)))
+
+
 def transform_networks(networks: DataFrame) -> DataFrame:
     location = F.col("location_parsed")
     companies = F.filter(F.transform("company", clean_text), lambda c: c.isNotNull())
@@ -93,6 +123,8 @@ def transform_networks(networks: DataFrame) -> DataFrame:
             location.longitude.alias("longitude"),
             "companies",
             F.coalesce(F.size("companies"), F.lit(0)).alias("companies_count"),
+            # Оператор - первая из компаний сети; system - платформа проката, для справки
+            normalize_operator(F.try_element_at("companies", F.lit(1))).alias("operator"),
             clean_text("system").alias("system"),
             clean_text("gbfs_href").alias("gbfs_href"),
             "ebikes",

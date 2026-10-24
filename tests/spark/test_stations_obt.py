@@ -15,6 +15,7 @@ OBT_COLUMNS = [
     "network_country",
     "network_companies",
     "network_companies_count",
+    "network_operator",
     "network_system",
     "station_id",
     "station_name",

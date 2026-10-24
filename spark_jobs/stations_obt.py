@@ -36,6 +36,7 @@ def build_obt(networks: DataFrame, stations: DataFrame, snapshot_date: str) -> D
         F.col("n.country").alias("network_country"),
         F.col("n.companies").alias("network_companies"),
         F.col("n.companies_count").alias("network_companies_count"),
+        F.col("n.operator").alias("network_operator"),
         F.col("n.system").alias("network_system"),
         F.col("s.station_id").alias("station_id"),
         F.col("s.name").alias("station_name"),
@@ -69,6 +70,8 @@ def write_snapshot(obt: DataFrame, path: str, snapshot_date: str) -> None:
         .write.format("delta")
         .mode("overwrite")
         .option("replaceWhere", f"snapshot_date = DATE'{snapshot_date}'")
+        # Новые колонки витрины добавляются в таблицу, у старых снимков в них NULL
+        .option("mergeSchema", "true")
         .partitionBy("snapshot_date")
         .save(path)
     )

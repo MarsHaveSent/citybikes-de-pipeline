@@ -220,3 +220,41 @@ GOLD_CHECKS = [
         fail_at=0.05,
     ),
 ]
+
+# Витрины спроса (ClickHouse). Параметр day - последние посчитанные местные сутки.
+# Полностью наблюдённые сети - те, которые опрашивались не меньше 90% суток
+_OBSERVED = "observed_share >= 0.9"
+DEMAND_CHECKS = [
+    Check(
+        "demand_observed_networks",
+        "gold",
+        f"""
+        SELECT uniqExact(network_id) FROM station_daily
+        WHERE local_date = {{day:Date}} AND {_OBSERVED}
+        """,
+        warn_at=18,
+        fail_at=10,
+        lower_is_worse=True,
+    ),
+    # Сеть опрашивалась весь день, но станции почти не менялись: API отдаёт застывшие данные
+    Check(
+        "demand_frozen_networks",
+        "gold",
+        f"""
+        SELECT countIf(changed_share < 0.1) FROM (
+            SELECT network_id, avg(changes > 0) AS changed_share FROM station_daily
+            WHERE local_date = {{day:Date}} AND {_OBSERVED} GROUP BY network_id
+        )
+        """,
+        warn_at=0,
+    ),
+    Check(
+        "demand_partially_observed_networks",
+        "gold",
+        """
+        SELECT uniqExact(network_id) FROM station_daily
+        WHERE local_date = {day:Date} AND observed_share >= 0.3 AND observed_share < 0.9
+        """,
+        warn_at=0,
+    ),
+]

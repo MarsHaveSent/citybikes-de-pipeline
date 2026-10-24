@@ -5,6 +5,7 @@ from pyspark.sql import functions as F
 
 from spark_jobs.silver import (
     clean_text,
+    normalize_operator,
     parse_bool,
     parse_timestamp,
     transform_networks,
@@ -118,3 +119,26 @@ def test_stations_extra_with_mixed_types(stations_df):
 
     empty = rows["2"]
     assert (empty.renting, empty.last_updated, empty.payment) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("company", "operator"),
+    [
+        ("Nextbike GmbH", "Nextbike"),
+        ("nextbike GmbH", "Nextbike"),
+        ("Motivate International, Inc.", "Motivate"),
+        ("Motivate LLC", "Motivate"),
+        ("YouBike Co., Ltd.", "YouBike"),
+        ("Deutsche Bahn AG", "Deutsche Bahn"),
+        ("JCDecaux", "JCDecaux"),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalize_operator(spark, company, operator):
+    assert evaluate(spark, normalize_operator, [company]) == [operator]
+
+
+def test_network_without_companies_has_no_operator(networks_df):
+    rows = transform_networks(networks_df({"id": "a", "name": "A", "company": []})).collect()
+    assert rows[0].operator is None

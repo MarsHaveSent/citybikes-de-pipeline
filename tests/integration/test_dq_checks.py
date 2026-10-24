@@ -94,3 +94,34 @@ def test_gold_first_snapshot_has_nothing_to_compare(ch):
 
     assert {r.check.name: r.value for r in results}["gold_rows_change"] is None
     assert dq.finish(results)["fail"] == 0
+
+
+def test_demand_checks(ch):
+    day = date(2026, 10, 20)
+    rows = [
+        # Живая сеть: станции менялись
+        (day, "live", "1", 5, 1.0),
+        (day, "live", "2", 3, 1.0),
+        # Застывшая: опрашивалась весь день, изменений нет
+        (day, "frozen", "1", 0, 1.0),
+        (day, "frozen", "2", 0, 1.0),
+        # Опрос шёл только часть суток
+        (day, "partial", "1", 4, 0.5),
+    ]
+    ch.insert(
+        "station_daily",
+        rows,
+        column_names=["local_date", "network_id", "station_id", "changes", "observed_share"],
+    )
+
+    results = dq.run_checks(
+        lambda sql, params: ch.query(sql, parameters=params).result_rows[0][0],
+        dq.DEMAND_CHECKS,
+        {"day": day.isoformat()},
+    )
+
+    assert values(results) == {
+        "demand_observed_networks": 2,
+        "demand_frozen_networks": 1,
+        "demand_partially_observed_networks": 1,
+    }

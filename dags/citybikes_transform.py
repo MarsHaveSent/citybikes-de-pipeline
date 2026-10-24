@@ -11,7 +11,6 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import clickhouse_connect
 import pendulum
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -29,22 +28,8 @@ CLICKHOUSE_DDL = Path("/opt/airflow/sql/clickhouse/create_tables.sql")
 SNAPSHOT_DATE = "{{ dag_run.run_after | ds }}"
 
 
-def clickhouse_client():
-    conn = Connection.get(CLICKHOUSE_CONN_ID)
-    params = {
-        "host": conn.host,
-        "port": conn.port,
-        "username": conn.login,
-        "password": conn.password,
-    }
-    # Образ ClickHouse создаёт базу из CLICKHOUSE_DB только при первом старте на пустом томе
-    with closing(clickhouse_connect.get_client(**params)) as admin:
-        admin.command(f"CREATE DATABASE IF NOT EXISTS {conn.schema}")
-    return clickhouse_connect.get_client(**params, database=conn.schema)
-
-
 def load_clickhouse(snapshot_date: str) -> dict[str, int]:
-    with closing(clickhouse_client()) as client:
+    with closing(clickhouse.connect(Connection.get(CLICKHOUSE_CONN_ID))) as client:
         clickhouse.run_script(client, CLICKHOUSE_DDL)
         rows = clickhouse.load_snapshot(
             client, "stations_obt", snapshot_date, clickhouse.hdfs_parquet(OBT_EXPORT_URL)
@@ -53,7 +38,7 @@ def load_clickhouse(snapshot_date: str) -> dict[str, int]:
 
 
 def check_gold(snapshot_date: str, run_id: str) -> dict[str, int]:
-    with closing(clickhouse_client()) as client:
+    with closing(clickhouse.connect(Connection.get(CLICKHOUSE_CONN_ID))) as client:
         results = dq.run_checks(
             lambda sql, params: client.query(sql, parameters=params).result_rows[0][0],
             dq.GOLD_CHECKS,
