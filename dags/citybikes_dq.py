@@ -69,6 +69,9 @@ dq_bronze = PythonOperator(
     task_id="dq_bronze",
     python_callable=check_bronze,
     op_kwargs={"run_id": "{{ run_id }}"},
+    # Когда ломается общая для всех DAG'ов схема, встаёт и сбор данных, тогда нужна
+    # проверка свежести
+    trigger_rule="all_done",
     dag=dag,
 )
 
