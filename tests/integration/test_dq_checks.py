@@ -125,3 +125,24 @@ def test_demand_checks(ch):
         "demand_frozen_networks": 1,
         "demand_partially_observed_networks": 1,
     }
+
+
+def test_market_checks(ch):
+    day = date(2026, 10, 25)
+    snapshot(ch, day, ["1", "2", "3"])
+    ch.insert(
+        "market_by_country",
+        [(day, "DE", 83_000_000, 2), (day, "XK", None, 1)],
+        column_names=["snapshot_date", "country", "population", "stations"],
+    )
+
+    results = dq.run_checks(
+        lambda sql, params: ch.query(sql, parameters=params).result_rows[0][0],
+        dq.MARKET_CHECKS,
+        {"day": day.isoformat()},
+    )
+
+    found = values(results)
+    assert found["market_stations_match_obt"] == 0
+    assert found["market_countries_without_population"] == 1
+    assert {r.check.name: r.status for r in results}["market_growth_point_cities"] == "fail"

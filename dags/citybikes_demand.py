@@ -22,7 +22,7 @@ from airflow.sdk import DAG, Connection
 
 from citybikes import clickhouse, dq
 from citybikes.monitoring import CALLBACKS
-from citybikes.settings import CLICKHOUSE_CONN_ID, DEMAND_EXPORT_URL, POSTGRES_CONN_ID
+from citybikes.settings import CLICKHOUSE_CONN_ID, EXPORT_URL, POSTGRES_CONN_ID
 from citybikes.spark_env import POSTGRES_ENV
 
 SPARK_JOBS = "/opt/airflow/spark_jobs"
@@ -35,7 +35,7 @@ def load_demand() -> dict[str, int]:
         clickhouse.run_script(client, CLICKHOUSE_DDL)
         loaded = {
             table: clickhouse.load_days(
-                client, table, clickhouse.hdfs_parquet(f"{DEMAND_EXPORT_URL}/{table}")
+                client, table, clickhouse.hdfs_parquet(f"{EXPORT_URL}/{table}")
             )
             for table in DEMAND_TABLES
         }

@@ -258,3 +258,36 @@ DEMAND_CHECKS = [
         warn_at=0,
     ),
 ]
+
+# Мировой рынок (ClickHouse). Параметр day - дата снимка
+MARKET_CHECKS = [
+    # Сумма станций по странам должна совпасть со станциями снимка: иначе агрегация что-то потеряла
+    Check(
+        "market_stations_match_obt",
+        "gold",
+        """
+        SELECT abs(
+            (SELECT sum(stations) FROM market_by_country WHERE snapshot_date = {day:Date})
+            - (SELECT countIf(station_id != '') FROM stations_obt WHERE snapshot_date = {day:Date})
+        )
+        """,
+        fail_at=0,
+    ),
+    # Код страны сети не нашёлся в справочнике GeoNames
+    Check(
+        "market_countries_without_population",
+        "gold",
+        """
+        SELECT countIf(population IS NULL OR population = 0)
+        FROM market_by_country WHERE snapshot_date = {day:Date}
+        """,
+        warn_at=0,
+    ),
+    Check(
+        "market_growth_point_cities",
+        "gold",
+        "SELECT count() FROM growth_points WHERE snapshot_date = {day:Date}",
+        fail_at=1000,
+        lower_is_worse=True,
+    ),
+]

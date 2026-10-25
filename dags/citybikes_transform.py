@@ -3,8 +3,10 @@
 - silver: очищенные сети и станции, /citybikes/silver/{networks,stations}
 - gold: One Big Table станций с атрибутами сетей, /citybikes/gold/stations_obt,
   ежедневный снимок в партиции snapshot_date
-- ClickHouse: тот же снимок в citybikes.stations_obt, день подменяется атомарно
-- dq_gold: проверки снимка в ClickHouse, результаты в ops_dq_results
+- market: мировой рынок по тому же снимку - market_by_country, operator_presence,
+  growth_points (справочники GeoNames из Postgres)
+- ClickHouse: снимки всех четырёх витрин, день подменяется атомарно
+- dq_gold: проверки снимка и рынка в ClickHouse, результаты в ops_dq_results
 """
 
 from contextlib import closing
@@ -20,28 +22,31 @@ from airflow.sdk import DAG, Connection
 
 from citybikes import clickhouse, dq
 from citybikes.monitoring import CALLBACKS
-from citybikes.settings import CLICKHOUSE_CONN_ID, OBT_EXPORT_URL, POSTGRES_CONN_ID
+from citybikes.settings import CLICKHOUSE_CONN_ID, EXPORT_URL, POSTGRES_CONN_ID
 from citybikes.spark_env import POSTGRES_ENV
 
 SPARK_JOBS = "/opt/airflow/spark_jobs"
 CLICKHOUSE_DDL = Path("/opt/airflow/sql/clickhouse/create_tables.sql")
 SNAPSHOT_DATE = "{{ dag_run.run_after | ds }}"
+SNAPSHOT_TABLES = ("stations_obt", "market_by_country", "operator_presence", "growth_points")
 
 
 def load_clickhouse(snapshot_date: str) -> dict[str, int]:
     with closing(clickhouse.connect(Connection.get(CLICKHOUSE_CONN_ID))) as client:
         clickhouse.run_script(client, CLICKHOUSE_DDL)
-        rows = clickhouse.load_snapshot(
-            client, "stations_obt", snapshot_date, clickhouse.hdfs_parquet(OBT_EXPORT_URL)
-        )
-    return {"rows": rows}
+        return {
+            table: clickhouse.load_snapshot(
+                client, table, snapshot_date, clickhouse.hdfs_parquet(f"{EXPORT_URL}/{table}")
+            )
+            for table in SNAPSHOT_TABLES
+        }
 
 
 def check_gold(snapshot_date: str, run_id: str) -> dict[str, int]:
     with closing(clickhouse.connect(Connection.get(CLICKHOUSE_CONN_ID))) as client:
         results = dq.run_checks(
             lambda sql, params: client.query(sql, parameters=params).result_rows[0][0],
-            dq.GOLD_CHECKS,
+            dq.GOLD_CHECKS + dq.MARKET_CHECKS,
             {"day": snapshot_date},
         )
     with closing(PostgresHook(POSTGRES_CONN_ID).get_conn()) as conn:
@@ -86,6 +91,15 @@ build_obt = SparkSubmitOperator(
     dag=dag,
 )
 
+build_market = SparkSubmitOperator(
+    task_id="build_market",
+    application=f"{SPARK_JOBS}/market.py",
+    name="citybikes_market",
+    application_args=[SNAPSHOT_DATE],
+    env_vars=POSTGRES_ENV,
+    dag=dag,
+)
+
 load_obt_to_clickhouse = PythonOperator(
     task_id="load_clickhouse",
     python_callable=load_clickhouse,
@@ -104,4 +118,4 @@ dq_gold = PythonOperator(
 
 end = EmptyOperator(task_id="end", dag=dag)
 
-start >> build_silver >> build_obt >> load_obt_to_clickhouse >> dq_gold >> end
+start >> build_silver >> build_obt >> build_market >> load_obt_to_clickhouse >> dq_gold >> end

@@ -129,3 +129,23 @@ CREATE TABLE IF NOT EXISTS ops_dq_results (
     run_id     text,
     PRIMARY KEY (check_name, checked_at)
 );
+
+-- Справочники GeoNames (CC BY 4.0), обновляются раз в месяц целиком
+CREATE TABLE IF NOT EXISTS geo_countries (
+    iso2       text PRIMARY KEY,
+    name       text NOT NULL,
+    continent  text,
+    population bigint NOT NULL,
+    loaded_at  timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS geo_cities (
+    geoname_id bigint PRIMARY KEY,
+    name       text NOT NULL,
+    country    text NOT NULL,
+    latitude   double precision NOT NULL,
+    longitude  double precision NOT NULL,
+    population bigint NOT NULL,
+    timezone   text,
+    loaded_at  timestamptz NOT NULL
+);

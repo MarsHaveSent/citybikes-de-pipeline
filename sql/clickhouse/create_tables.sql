@@ -100,3 +100,56 @@ CREATE TABLE IF NOT EXISTS network_hourly
 ENGINE = MergeTree
 PARTITION BY local_date
 ORDER BY (network_id, local_date, local_hour);
+
+-- Мировой рынок (spark_jobs/market.py): снимок на дату, как stations_obt
+CREATE TABLE IF NOT EXISTS market_by_country
+(
+    snapshot_date        Date,
+    country              String,
+    country_name         Nullable(String),
+    continent            LowCardinality(Nullable(String)),
+    population           Nullable(Int64),
+    networks             UInt32,
+    stations             UInt32,
+    operators            UInt32,
+    -- Индекс Херфиндаля-Хиршмана по долям станций операторов: от ~0 до 10 000
+    hhi                  Nullable(Int32),
+    top_operator         Nullable(String),
+    top_operator_share   Nullable(Float64),
+    ebike_station_share  Nullable(Float64),
+    stations_per_million Nullable(Float64)
+)
+ENGINE = MergeTree
+PARTITION BY snapshot_date
+ORDER BY country;
+
+CREATE TABLE IF NOT EXISTS operator_presence
+(
+    snapshot_date Date,
+    operator      String,
+    country       String,
+    networks      UInt32,
+    stations      UInt32
+)
+ENGINE = MergeTree
+PARTITION BY snapshot_date
+ORDER BY (operator, country);
+
+CREATE TABLE IF NOT EXISTS growth_points
+(
+    snapshot_date      Date,
+    geoname_id         UInt64,
+    city               String,
+    country            String,
+    latitude           Float64,
+    longitude          Float64,
+    population         UInt64,
+    nearest_network_id Nullable(String),
+    nearest_network_km Nullable(Float64),
+    stations_in_radius UInt32,
+    stations_per_100k  Float64,
+    without_network    Bool
+)
+ENGINE = MergeTree
+PARTITION BY snapshot_date
+ORDER BY (country, geoname_id);

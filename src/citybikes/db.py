@@ -257,3 +257,22 @@ def register_fields(
     if new and known:
         log.warning("Новые поля в %s: %s", entity, ", ".join(new))
     return new
+
+
+def replace_geonames(
+    conn: Connection, countries: list[tuple], cities: list[tuple], loaded_at: datetime
+) -> None:
+    """Полная замена справочников в одной транзакции: читатели видят старую версию до коммита."""
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE geo_countries, geo_cities")
+        with cur.copy(
+            "COPY geo_countries (iso2, name, continent, population, loaded_at) FROM STDIN"
+        ) as copy:
+            for row in countries:
+                copy.write_row((*row, loaded_at))
+        with cur.copy(
+            "COPY geo_cities (geoname_id, name, country, latitude, longitude, population,"
+            " timezone, loaded_at) FROM STDIN"
+        ) as copy:
+            for row in cities:
+                copy.write_row((*row, loaded_at))

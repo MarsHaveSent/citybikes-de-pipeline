@@ -156,3 +156,16 @@ def test_every_sync_is_journaled_even_without_changes(conn):
         (T0, 2, 2),
         (T1, 2, 0),
     ]
+
+
+def test_geonames_are_replaced_entirely(conn):
+    db.replace_geonames(conn, [("DE", "Germany", "EU", 83_000_000)], [], T0)
+    db.replace_geonames(
+        conn,
+        [("FR", "France", "EU", 68_000_000)],
+        [(2988507, "Paris", "FR", 48.85, 2.35, 2_138_551, "Europe/Paris")],
+        T1,
+    )
+
+    assert fetch(conn, "SELECT iso2, loaded_at FROM geo_countries") == [("FR", T1)]
+    assert fetch(conn, "SELECT name, population FROM geo_cities") == [("Paris", 2_138_551)]
