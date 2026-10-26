@@ -44,6 +44,10 @@ services:
   spark-master: *spark-image
   spark-worker: *spark-image
 
+  metabase:
+    environment:
+      MB_SITE_URL: https://${SITE_DOMAIN:?}/
+
   caddy:
     image: caddy:2.11.7
     environment:
@@ -60,6 +64,7 @@ services:
     restart: unless-stopped
     depends_on:
       - airflow-apiserver
+      - metabase
 
 volumes:
   # Сертификаты Let's Encrypt: без тома Caddy запрашивал бы их заново при каждом пересоздании

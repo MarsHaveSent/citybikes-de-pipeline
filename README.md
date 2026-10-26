@@ -81,9 +81,9 @@ TEST_DATABASE_URL=postgresql://postgres:test@127.0.0.1:15499/postgres \
 Сервер обновляется при пуше в `main`, если прошли все проверки CI:
 
 1. Образы Airflow, Spark и Hadoop собираются в GitHub Actions и публикуются в GHCR. Тег образа — хеш его каталога `docker/<образ>` в git ([deploy/image-tag.sh](deploy/image-tag.sh)), поэтому образ пересобирается, только когда меняются его файлы.
-2. По SSH на сервере запускается [deploy/deploy.sh](deploy/deploy.sh): код переключается на этот коммит, образы — на теги, вычисленные из него же, стек перезапускается, скрипт ждёт, пока сервисы пройдут healthcheck. DAG'и, код и SQL смонтированы в контейнеры и обновляются вместе с git, без пересборки образов.
+2. По SSH на сервере запускается [deploy/deploy.sh](deploy/deploy.sh): код переключается на этот коммит, образы — на теги, вычисленные из него же, стек перезапускается, скрипт ждёт, пока сервисы пройдут healthcheck, и настраивает Metabase через API ([scripts/metabase_setup.py](scripts/metabase_setup.py)): администратор и подключение к ClickHouse под пользователем только на чтение. DAG'и, код и SQL смонтированы в контейнеры и обновляются вместе с git, без пересборки образов.
 
-На сервере к `docker-compose.yml` подключается [deploy/compose.prod.yml](deploy/compose.prod.yml): образы из GHCR вместо локальной сборки и Caddy, который получает сертификат Let's Encrypt и открывает Airflow по адресу `https://<домен>/airflow/`. Остальные сервисы наружу не публикуются. Первичная настройка чистого сервера — [deploy/bootstrap.sh](deploy/bootstrap.sh).
+На сервере к `docker-compose.yml` подключается [deploy/compose.prod.yml](deploy/compose.prod.yml): образы из GHCR вместо локальной сборки и Caddy, который получает сертификат Let's Encrypt и открывает Metabase по адресу `https://<домен>/`, а Airflow — `https://<домен>/airflow/`. Остальные сервисы наружу не публикуются. Первичная настройка чистого сервера — [deploy/bootstrap.sh](deploy/bootstrap.sh).
 
 ## Источник данных
 

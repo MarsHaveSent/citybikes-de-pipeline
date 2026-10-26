@@ -14,6 +14,6 @@
 	}
 
 	handle {
-		respond "CityBikes pipeline" 200
+		reverse_proxy metabase:3000
 	}
 }

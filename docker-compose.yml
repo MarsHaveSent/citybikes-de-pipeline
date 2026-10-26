@@ -33,8 +33,8 @@ x-airflow-common: &airflow-common
     - ./docker/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
     - airflow-logs:/opt/airflow/logs
   depends_on: &airflow-common-depends-on
-    postgres:
-      condition: service_healthy
+    postgres-init:
+      condition: service_completed_successfully
 
 x-hadoop-common: &hadoop-common
   build: docker/hadoop
@@ -53,22 +53,38 @@ x-spark-common: &spark-common
 services:
   postgres:
     # Точная версия и ОС образа
-    image: postgres:17.11-trixie
+    image: &postgres-image postgres:17.11-trixie
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
-      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
-      CITYBIKES_DB_PASSWORD: ${CITYBIKES_DB_PASSWORD:?}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres"]
+      # Проверка по TCP: при первом запуске образ сначала поднимает временный сервер только на сокете,
+      # и проверка через сокет пропустила бы postgres-init раньше времени
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "127.0.0.1"]
       interval: 10s
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+  # Пользователи и базы Airflow, citybikes и Metabase
+  postgres-init:
+    image: *postgres-image
+    command: ["bash", "/init-databases.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
+      CITYBIKES_DB_PASSWORD: ${CITYBIKES_DB_PASSWORD:?}
+      METABASE_DB_PASSWORD: ${METABASE_DB_PASSWORD:?}
+    volumes:
+      - ./docker/postgres/init-databases.sh:/init-databases.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   airflow-init:
     <<: *airflow-common
@@ -215,9 +231,11 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
       # Пользователь сможет создавать других пользователей SQL-командами
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_METABASE_PASSWORD: ${CLICKHOUSE_METABASE_PASSWORD:?}
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./docker/clickhouse/low-memory.xml:/etc/clickhouse-server/config.d/low-memory.xml:ro
+      - ./docker/clickhouse/metabase-user.xml:/etc/clickhouse-server/users.d/metabase-user.xml:ro
     ports:
       - "127.0.0.1:8123:8123"
     ulimits:
@@ -230,6 +248,37 @@ services:
       retries: 10
       start_period: 15s
     restart: unless-stopped
+
+  # Дашборды. Метаданные (вопросы, дашборды, пользователи) хранятся в Postgres
+  metabase:
+    image: metabase/metabase:v0.63.20
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: ${METABASE_DB_PASSWORD:?}
+      # Без лимита JVM берёт до четверти памяти хоста
+      JAVA_OPTS: -Xmx1g
+      MB_ANON_TRACKING_ENABLED: "false"
+      MB_CHECK_FOR_UPDATES: "false"
+      MB_LOAD_SAMPLE_CONTENT: "false"
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # Первый запуск с миграциями базы занимает пару минут
+      start_period: 180s
+    restart: unless-stopped
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
 
 volumes:
   postgres-data:

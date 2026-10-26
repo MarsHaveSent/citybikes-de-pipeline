@@ -33,7 +33,8 @@ docker compose pull --quiet
 docker compose up -d --remove-orphans
 # --wait считает ошибкой штатное завершение *-init, поэтому ждём только долгоживущие сервисы
 mapfile -t services < <(docker compose config --services | grep -v -- '-init$')
-docker compose up -d --wait --wait-timeout 300 "${services[@]}"
+docker compose up -d --wait --wait-timeout 600 "${services[@]}"
+python3 scripts/metabase_setup.py
 # Удаляет все образы которые не использует ни один контейнер.
 docker image prune --all --force >/dev/null
 
