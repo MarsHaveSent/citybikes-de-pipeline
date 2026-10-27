@@ -144,7 +144,7 @@ jobs:
       group: deploy
       cancel-in-progress: false
     env:
-      DEPLOY_HOST: nickolajvolodin.fvds.ru
+      DEPLOY_HOST: citybikes-de-pipeline.ru
     steps:
       - uses: actions/checkout@v7
       - name: Configure SSH
