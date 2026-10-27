@@ -264,6 +264,8 @@ services:
       MB_ANON_TRACKING_ENABLED: "false"
       MB_CHECK_FOR_UPDATES: "false"
       MB_LOAD_SAMPLE_CONTENT: "false"
+      # По умолчанию запрос отдаёт до 2 000 строк, и карта станций города обрезается
+      MB_UNAGGREGATED_QUERY_ROW_LIMIT: "10000"
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:

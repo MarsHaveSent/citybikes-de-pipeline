@@ -153,3 +153,48 @@ CREATE TABLE IF NOT EXISTS growth_points
 ENGINE = MergeTree
 PARTITION BY snapshot_date
 ORDER BY (country, geoname_id);
+
+-- Представления для Metabase: правила отбора, общие для всех карточек дашбордов,
+-- задаются здесь один раз. Снимки - последняя загруженная дата
+CREATE OR REPLACE VIEW bi_stations AS
+SELECT * FROM stations_obt
+WHERE snapshot_date = (SELECT max(snapshot_date) FROM stations_obt);
+
+CREATE OR REPLACE VIEW bi_market_by_country AS
+SELECT * FROM market_by_country
+WHERE snapshot_date = (SELECT max(snapshot_date) FROM market_by_country);
+
+CREATE OR REPLACE VIEW bi_operator_presence AS
+SELECT * FROM operator_presence
+WHERE snapshot_date = (SELECT max(snapshot_date) FROM operator_presence);
+
+CREATE OR REPLACE VIEW bi_growth_points AS
+SELECT * FROM growth_points
+WHERE snapshot_date = (SELECT max(snapshot_date) FROM growth_points);
+
+-- Спрос: только сутки сети, которые опрос покрыл хотя бы на 90%.
+-- weekday - с понедельника (1) по воскресенье (7). В network_hourly он в нумерации Spark,
+-- с воскресенья, поэтому в представлении пересчитан
+CREATE OR REPLACE VIEW bi_station_daily AS
+SELECT
+    *,
+    toDayOfWeek(local_date) AS weekday,
+    concat(toString(weekday), ' ', ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][weekday]) AS weekday_name,
+    if(weekday >= 6, 'выходные', 'будни') AS day_type
+FROM station_daily
+WHERE observed_share >= 0.9;
+
+-- Полнота берётся из station_daily: в network_hourly нет строк за часы без данных
+CREATE OR REPLACE VIEW bi_network_hourly AS
+SELECT
+    * REPLACE (toDayOfWeek(local_date) AS weekday),
+    concat(
+        toString(toDayOfWeek(local_date)), ' ',
+        ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][toDayOfWeek(local_date)]
+    ) AS weekday_name,
+    if(toDayOfWeek(local_date) >= 6, 'выходные', 'будни') AS day_type,
+    CAST(precipitation > 0.5 AS Nullable(Bool)) AS is_rainy
+FROM network_hourly
+WHERE (network_id, local_date) IN (
+    SELECT network_id, local_date FROM station_daily WHERE observed_share >= 0.9
+);
