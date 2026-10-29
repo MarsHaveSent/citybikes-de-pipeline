@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS growth_points
     geoname_id         UInt64,
     city               String,
     country            String,
+    country_name       Nullable(String),
+    continent          LowCardinality(Nullable(String)),
     latitude           Float64,
     longitude          Float64,
     population         UInt64,
@@ -154,23 +156,65 @@ ENGINE = MergeTree
 PARTITION BY snapshot_date
 ORDER BY (country, geoname_id);
 
--- Представления для Metabase: правила отбора, общие для всех карточек дашбордов,
--- задаются здесь один раз. Снимки - последняя загруженная дата
-CREATE OR REPLACE VIEW bi_stations AS
-SELECT * FROM stations_obt
-WHERE snapshot_date = (SELECT max(snapshot_date) FROM stations_obt);
+ALTER TABLE growth_points
+    ADD COLUMN IF NOT EXISTS country_name Nullable(String) AFTER country,
+    ADD COLUMN IF NOT EXISTS continent LowCardinality(Nullable(String)) AFTER country_name;
 
+-- Представления для Metabase: правила отбора, общие для всех карточек дашбордов,
+-- задаются здесь один раз. Снимки - последняя загруженная дата.
+-- Континент - по-русски вместо кода GeoNames
 CREATE OR REPLACE VIEW bi_market_by_country AS
-SELECT * FROM market_by_country
+SELECT
+    * REPLACE (transform(
+        continent,
+        ['EU', 'AS', 'NA', 'SA', 'AF', 'OC', 'AN'],
+        ['Европа', 'Азия', 'Северная Америка', 'Южная Америка', 'Африка', 'Океания', 'Антарктида'],
+        continent
+    ) AS continent)
+FROM market_by_country
 WHERE snapshot_date = (SELECT max(snapshot_date) FROM market_by_country);
 
-CREATE OR REPLACE VIEW bi_operator_presence AS
-SELECT * FROM operator_presence
-WHERE snapshot_date = (SELECT max(snapshot_date) FROM operator_presence);
-
+-- В growth_points свои названия стран: в нём есть страны без сетей, их нет в market_by_country
 CREATE OR REPLACE VIEW bi_growth_points AS
-SELECT * FROM growth_points
+SELECT
+    * REPLACE (transform(
+        continent,
+        ['EU', 'AS', 'NA', 'SA', 'AF', 'OC', 'AN'],
+        ['Европа', 'Азия', 'Северная Америка', 'Южная Америка', 'Африка', 'Океания', 'Антарктида'],
+        continent
+    ) AS continent)
+FROM growth_points
 WHERE snapshot_date = (SELECT max(snapshot_date) FROM growth_points);
+
+-- Остальным названия страны и континент достаются из рынка: там все страны, где есть сети
+CREATE OR REPLACE VIEW bi_stations AS
+SELECT s.*, m.country_name, m.continent
+FROM stations_obt AS s
+LEFT JOIN bi_market_by_country AS m ON m.country = s.network_country
+WHERE s.snapshot_date = (SELECT max(snapshot_date) FROM stations_obt);
+
+CREATE OR REPLACE VIEW bi_operator_presence AS
+SELECT o.*, m.country_name, m.continent
+FROM operator_presence AS o
+LEFT JOIN bi_market_by_country AS m ON m.country = o.country
+WHERE o.snapshot_date = (SELECT max(snapshot_date) FROM operator_presence);
+
+-- Число станций сети во всех снимках: для сравнения первого и последнего
+CREATE OR REPLACE VIEW bi_network_snapshots AS
+SELECT n.*, m.country_name, m.continent
+FROM (
+    SELECT
+        snapshot_date,
+        network_id,
+        any(network_name) AS network_name,
+        any(network_city) AS network_city,
+        any(network_country) AS network_country,
+        any(network_operator) AS network_operator,
+        countIf(station_id != '') AS stations
+    FROM stations_obt
+    GROUP BY snapshot_date, network_id
+) AS n
+LEFT JOIN bi_market_by_country AS m ON m.country = n.network_country;
 
 -- Спрос: только сутки сети, которые опрос покрыл хотя бы на 90%.
 -- weekday - с понедельника (1) по воскресенье (7). В network_hourly он в нумерации Spark,

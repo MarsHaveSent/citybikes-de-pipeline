@@ -42,3 +42,41 @@ def test_demand_views_keep_only_well_observed_days(ch):
         ("full", SUNDAY, 7, "выходные", False),
         ("full", MONDAY, 1, "будни", True),
     ]
+
+
+def test_world_views_get_country_names_from_market(ch):
+    ch.insert(
+        "market_by_country",
+        [(MONDAY, "DE", "Germany", "EU", 1)],
+        column_names=["snapshot_date", "country", "country_name", "continent", "stations"],
+    )
+    ch.insert(
+        "operator_presence",
+        [(MONDAY, "Nextbike", "DE", 1, 1)],
+        column_names=["snapshot_date", "operator", "country", "networks", "stations"],
+    )
+    ch.insert(
+        "stations_obt",
+        [
+            (SUNDAY, "n1", "Net", "DE", "1"),
+            (SUNDAY, "n1", "Net", "DE", "2"),
+            (MONDAY, "n1", "Net", "DE", "1"),
+        ],
+        column_names=[
+            "snapshot_date",
+            "network_id",
+            "network_name",
+            "network_country",
+            "station_id",
+        ],
+    )
+
+    presence = ch.query("SELECT operator, country_name, continent FROM bi_operator_presence")
+    assert presence.result_rows == [("Nextbike", "Germany", "Европа")]
+    stations = ch.query("SELECT station_id, country_name, continent FROM bi_stations")
+    assert stations.result_rows == [("1", "Germany", "Европа")]
+    history = ch.query(
+        "SELECT snapshot_date, stations, country_name FROM bi_network_snapshots"
+        " ORDER BY snapshot_date"
+    )
+    assert history.result_rows == [(SUNDAY, 2, "Germany"), (MONDAY, 1, "Germany")]

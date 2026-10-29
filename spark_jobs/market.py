@@ -48,13 +48,20 @@ def networks_of(obt: DataFrame) -> DataFrame:
         F.first("network_latitude").alias("latitude"),
         F.first("network_longitude").alias("longitude"),
         F.count("station_id").alias("stations"),
-        F.count(F.when(F.col("station_has_ebikes") | (F.col("station_ebikes") > 0), 1)).alias(
-            "ebike_stations"
+        # Электро на станции - по числу электровелосипедов на момент снимка. Флаг has_ebikes
+        # значит только, что станция их поддерживает: он true почти везде, где вообще есть
+        F.count(F.when(F.col("station_ebikes") > 0, 1)).alias("ebike_stations"),
+        F.count("station_ebikes").alias("ebike_reported_stations"),
+    )
+
+
+def with_country_names(df: DataFrame, countries: DataFrame) -> DataFrame:
+    return df.join(
+        countries.select(
+            F.col("iso2").alias("country"), F.col("name").alias("country_name"), "continent"
         ),
-        # Сообщают ли станции сети что-то про электро
-        F.count(
-            F.when(F.col("station_has_ebikes").isNotNull() | F.col("station_ebikes").isNotNull(), 1)
-        ).alias("ebike_reported_stations"),
+        "country",
+        "left",
     )
 
 
@@ -86,18 +93,10 @@ def market_by_country(presence: DataFrame, networks: DataFrame, countries: DataF
             "ebike_station_share"
         ),
     )
+    population = countries.select(F.col("iso2").alias("country"), "population")
     return (
-        totals.join(concentration, "country")
-        .join(
-            countries.select(
-                F.col("iso2").alias("country"),
-                F.col("name").alias("country_name"),
-                "continent",
-                "population",
-            ),
-            "country",
-            "left",
-        )
+        with_country_names(totals.join(concentration, "country"), countries)
+        .join(population, "country", "left")
         .withColumn(
             "stations_per_million",
             F.when(F.col("population") > 0, F.col("stations") / F.col("population") * 1e6),
@@ -233,15 +232,16 @@ def main() -> None:
             .filter(F.col("snapshot_date") == snapshot_date)
         )
         networks = networks_of(obt).cache()
+        countries = jdbc(spark, "geo_countries").cache()
         presence = operator_presence(networks)
+        # В growth_points есть страны без сетей, и названия им брать больше неоткуда
+        cities = growth_points(
+            jdbc(spark, "geo_cities"), networks, obt.filter(F.col("station_id").isNotNull())
+        )
         marts = {
-            "market_by_country": market_by_country(
-                presence, networks, jdbc(spark, "geo_countries")
-            ),
+            "market_by_country": market_by_country(presence, networks, countries),
             "operator_presence": presence,
-            "growth_points": growth_points(
-                jdbc(spark, "geo_cities"), networks, obt.filter(F.col("station_id").isNotNull())
-            ),
+            "growth_points": with_country_names(cities, countries),
         }
         for name, df in marts.items():
             write_snapshot(df, name, snapshot_date)

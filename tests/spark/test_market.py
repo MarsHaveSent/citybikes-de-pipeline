@@ -1,6 +1,12 @@
 import pytest
 
-from spark_jobs.market import growth_points, market_by_country, networks_of, operator_presence
+from spark_jobs.market import (
+    growth_points,
+    market_by_country,
+    networks_of,
+    operator_presence,
+    with_country_names,
+)
 
 OBT_SCHEMA = (
     "network_id string, network_name string, network_country string, network_operator string, "
@@ -14,10 +20,11 @@ BERLIN = (52.52, 13.40)
 @pytest.fixture
 def obt(spark):
     rows = [
-        # Оператор A: 3 станции, у двух есть электро
+        # Оператор A: 3 станции, электровелосипеды стоят на двух. Третья их поддерживает
+        # (has_ebikes), но сейчас их там нет
         ("a1", "A Berlin", "DE", "A", *BERLIN, "1", 52.53, 13.41, True, 2),
         ("a1", "A Berlin", "DE", "A", *BERLIN, "2", 52.51, 13.39, None, 1),
-        ("a1", "A Berlin", "DE", "A", *BERLIN, "3", 52.52, 13.40, False, 0),
+        ("a1", "A Berlin", "DE", "A", *BERLIN, "3", 52.52, 13.40, True, 0),
         # Оператор B: 1 станция, про электро не сообщает
         ("b1", "B Berlin", "DE", "B", *BERLIN, "1", 52.50, 13.42, None, None),
         # Сеть без оператора и без станций
@@ -43,7 +50,7 @@ def test_market_concentration_and_density(spark, obt):
     assert (de.stations, de.networks, de.operators, de.hhi) == (4, 2, 2, 6250)
     assert (de.top_operator, de.top_operator_share) == ("A", 0.75)
     assert de.stations_per_million == 4.0
-    # Про электро сообщают 3 станции, электро есть на двух
+    # Число электровелосипедов сообщают 3 станции, они есть на двух
     assert de.ebike_station_share == pytest.approx(2 / 3)
     assert rows["FR"].stations_per_million is None
 
@@ -76,3 +83,16 @@ def test_growth_points(spark, obt):
     assert far.without_network
     assert far.nearest_network_km == pytest.approx(100, abs=1)
     assert far.stations_in_radius == 0
+
+
+def test_country_names_attached_by_iso_code(spark):
+    df = spark.createDataFrame([("DE",), ("XX",)], "country string")
+    countries = spark.createDataFrame(
+        [("DE", "Germany", "EU", 83_000_000)],
+        "iso2 string, name string, continent string, population long",
+    )
+
+    rows = {r.country: r for r in with_country_names(df, countries).collect()}
+
+    assert (rows["DE"].country_name, rows["DE"].continent) == ("Germany", "EU")
+    assert (rows["XX"].country_name, rows["XX"].continent) == (None, None)
