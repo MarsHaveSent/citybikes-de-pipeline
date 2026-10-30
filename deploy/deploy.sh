@@ -27,7 +27,9 @@ for name in airflow spark hadoop; do
     set_env "${name^^}_IMAGE_TAG" "$(bash deploy/image-tag.sh "$name")"
 done
 
-docker compose pull --quiet
+# Образы с Docker Hub закреплены по версии и уже лежат на сервере, а Docker Hub из РФ
+# доступен не всегда: тянем только те, которых нет (новые теги наших образов в GHCR)
+docker compose pull --quiet --policy missing
 # Сначала поднимаются все сервисы, включая одноразовые *-init: от hdfs-init никто не зависит,
 # и без этого шага его контейнер остался бы на старом образе.
 docker compose up -d --remove-orphans
