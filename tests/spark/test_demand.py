@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from pyspark.sql import functions as F
 
 from spark_jobs.demand import (
     coverage,
@@ -75,6 +76,19 @@ def test_large_jumps_are_operator_moves_not_trips(spark, timezones):
 
     assert (day.pickups, day.returns, day.net_flow) == (1, 0, -1)
     assert (day.operator_removed, day.operator_added) == (5, 6)
+
+
+def test_network_wide_bursts_are_not_trips(spark, timezones):
+    # 30 станций: в 9:00 у 25 из них пропал велосипед разом (сбой ленты), в 10:00 одну взяли
+    rows = [("net", str(i), at(23, day=19), 1, 5, 0) for i in range(30)]
+    rows += [("net", str(i), at(9), 0, 6, 0) for i in range(25)]
+    rows += [("net", "29", at(10), 0, 6, 0)]
+    status = spark.createDataFrame(rows, LOG_SCHEMA)
+
+    spans = intervals(status, START, END)
+
+    assert spans.agg(F.sum("pickups")).first()[0] == 1
+    assert spans.filter(F.col("change").isNotNull()).count() == 1
 
 
 def test_station_daily_totals_and_time_weighted_average(spark, hourly, timezones):

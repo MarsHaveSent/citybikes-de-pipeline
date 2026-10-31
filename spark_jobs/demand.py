@@ -42,6 +42,10 @@ FRESH_SECONDS = 1800
 # взятия и возвраты встречаются одинаково часто. С 5 велосипедов привозов заметно больше,
 # чем вывозов: это машина развоза
 REBALANCE_BIKES = 5
+# Если за один опрос изменилось больше половины станций сети, это сбой ленты или изменения
+# за несколько часов, пришедшие разом
+BURST_SHARE = 0.5
+BURST_MIN_STATIONS = 20
 
 
 def one_hour() -> Column:
@@ -57,16 +61,31 @@ def intervals(status: DataFrame, start: datetime, end: datetime) -> DataFrame:
     """Строки истории -> интервалы [valid_from, valid_to) внутри [start, end).
 
     В status должна быть и последняя строка каждой станции до start: она задаёт состояние
-    на начало периода. Взятия и возвраты считаются только для изменений внутри периода.
+    на начало периода. Взятия и возвраты считаются только для изменений внутри периода
+    и не считаются для массовых изменений (BURST_SHARE): состояние берётся, поездки - нет.
     """
+    network_size = status.groupBy("network_id").agg(
+        F.countDistinct("station_id").alias("network_stations")
+    )
+    bursts = (
+        status.groupBy("network_id", "observed_at")
+        .agg(F.count("*").alias("changed"))
+        .join(network_size, "network_id")
+        .filter(
+            (F.col("changed") > BURST_SHARE * F.col("network_stations"))
+            & (F.col("changed") >= BURST_MIN_STATIONS)
+        )
+        .select("network_id", "observed_at", F.lit(True).alias("burst"))
+    )
     station = Window.partitionBy("network_id", "station_id").orderBy("observed_at")
     change = F.col("free_bikes") - F.lag("free_bikes").over(station)
-    inside = F.col("observed_at") >= F.lit(start)
+    counted = (F.col("observed_at") >= F.lit(start)) & F.col("burst").isNull()
     by_users = F.abs(F.col("change")) < REBALANCE_BIKES
     down = F.greatest(-F.col("change"), F.lit(0))
     up = F.greatest(F.col("change"), F.lit(0))
     return (
-        status.withColumn("change", F.when(inside, change))
+        status.join(bursts, ["network_id", "observed_at"], "left")
+        .withColumn("change", F.when(counted, change))
         .withColumn("next_at", F.lead("observed_at").over(station))
         .withColumn("valid_from", F.greatest("observed_at", F.lit(start)))
         .withColumn("valid_to", F.least(F.coalesce("next_at", F.lit(end)), F.lit(end)))
@@ -75,6 +94,7 @@ def intervals(status: DataFrame, start: datetime, end: datetime) -> DataFrame:
         .withColumn("operator_removed", F.when(~by_users, down).otherwise(0))
         .withColumn("operator_added", F.when(~by_users, up).otherwise(0))
         .filter(F.col("valid_to") > F.col("valid_from"))
+        .drop("burst")
     )
 
 
