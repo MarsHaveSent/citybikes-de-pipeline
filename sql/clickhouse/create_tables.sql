@@ -216,7 +216,8 @@ FROM (
 ) AS n
 LEFT JOIN bi_market_by_country AS m ON m.country = n.network_country;
 
--- Спрос: только сутки сети, которые опрос покрыл хотя бы на 90%.
+-- Спрос: только Германия и только сутки сети, которые опрос покрыл хотя бы на 90%.
+-- До 23.10 часто опрашивались сети из разных стран, их сутки в таблицах остались.
 -- weekday - с понедельника (1) по воскресенье (7). В network_hourly он в нумерации Spark,
 -- с воскресенья, поэтому в представлении пересчитан
 CREATE OR REPLACE VIEW bi_station_daily AS
@@ -226,7 +227,7 @@ SELECT
     concat(toString(weekday), ' ', ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][weekday]) AS weekday_name,
     if(weekday >= 6, 'выходные', 'будни') AS day_type
 FROM station_daily
-WHERE observed_share >= 0.9;
+WHERE network_country = 'DE' AND observed_share >= 0.9;
 
 -- Полнота берётся из station_daily: в network_hourly нет строк за часы без данных
 CREATE OR REPLACE VIEW bi_network_hourly AS
@@ -239,6 +240,6 @@ SELECT
     if(toDayOfWeek(local_date) >= 6, 'выходные', 'будни') AS day_type,
     CAST(precipitation > 0.5 AS Nullable(Bool)) AS is_rainy
 FROM network_hourly
-WHERE (network_id, local_date) IN (
+WHERE network_country = 'DE' AND (network_id, local_date) IN (
     SELECT network_id, local_date FROM station_daily WHERE observed_share >= 0.9
 );

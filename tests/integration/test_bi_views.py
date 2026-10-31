@@ -14,16 +14,32 @@ def test_snapshot_views_show_latest_day(ch):
     assert rows == [(MONDAY, 2)]
 
 
-def test_demand_views_keep_only_well_observed_days(ch):
+def test_demand_views_keep_only_well_observed_german_days(ch):
     ch.insert(
         "station_daily",
-        [(SUNDAY, "full", "1", 0.95), (MONDAY, "full", "1", 1.0), (MONDAY, "gap", "1", 0.5)],
-        column_names=["local_date", "network_id", "station_id", "observed_share"],
+        [
+            (SUNDAY, "full", "DE", "1", 0.95),
+            (MONDAY, "full", "DE", "1", 1.0),
+            (MONDAY, "gap", "DE", "1", 0.5),
+            (MONDAY, "abroad", "ES", "1", 1.0),
+        ],
+        column_names=[
+            "local_date",
+            "network_id",
+            "network_country",
+            "station_id",
+            "observed_share",
+        ],
     )
     ch.insert(
         "network_hourly",
-        [(SUNDAY, 8, "full", 0.0), (MONDAY, 8, "full", 1.2), (MONDAY, 8, "gap", 0.0)],
-        column_names=["local_date", "local_hour", "network_id", "precipitation"],
+        [
+            (SUNDAY, 8, "full", "DE", 0.0),
+            (MONDAY, 8, "full", "DE", 1.2),
+            (MONDAY, 8, "gap", "DE", 0.0),
+            (MONDAY, 8, "abroad", "ES", 0.0),
+        ],
+        column_names=["local_date", "local_hour", "network_id", "network_country", "precipitation"],
     )
 
     daily = ch.query(
