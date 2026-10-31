@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS station_daily
     pickups           Int32,
     returns           Int32,
     net_flow          Int32,
+    -- Развоз: изменения от 5 велосипедов за опрос, в поездки они не входят
+    operator_removed  Int32,
+    operator_added    Int32,
     changes           Int32,
     avg_free_bikes    Nullable(Float64),
     avg_ebikes        Nullable(Float64),
@@ -87,6 +90,8 @@ CREATE TABLE IF NOT EXISTS network_hourly
     stations             UInt32,
     pickups              Int32,
     returns              Int32,
+    operator_removed     Int32,
+    operator_added       Int32,
     bikes_available      Float64,
     ebikes_available     Nullable(Float64),
     empty_station_share  Float64,
@@ -100,6 +105,14 @@ CREATE TABLE IF NOT EXISTS network_hourly
 ENGINE = MergeTree
 PARTITION BY local_date
 ORDER BY (network_id, local_date, local_hour);
+
+ALTER TABLE station_daily
+    ADD COLUMN IF NOT EXISTS operator_removed Int32 AFTER net_flow,
+    ADD COLUMN IF NOT EXISTS operator_added Int32 AFTER operator_removed;
+
+ALTER TABLE network_hourly
+    ADD COLUMN IF NOT EXISTS operator_removed Int32 AFTER returns,
+    ADD COLUMN IF NOT EXISTS operator_added Int32 AFTER operator_removed;
 
 -- Мировой рынок (spark_jobs/market.py): снимок на дату, как stations_obt
 CREATE TABLE IF NOT EXISTS market_by_country

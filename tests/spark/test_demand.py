@@ -54,6 +54,29 @@ def test_station_hours_split_intervals_and_count_changes(hourly):
     assert rows[2].pickups is None
 
 
+def test_large_jumps_are_operator_moves_not_trips(spark, timezones):
+    status = spark.createDataFrame(
+        [
+            ("net", "1", at(23, day=19), 2, 8, 0),
+            # Машина привезла 6 велосипедов, потом один взяли и 5 увезли
+            ("net", "1", at(8), 8, 2, 0),
+            ("net", "1", at(9), 7, 3, 0),
+            ("net", "1", at(10), 2, 8, 0),
+        ],
+        LOG_SCHEMA,
+    )
+    hourly = localize(station_hours(intervals(status, START, END)), timezones)
+    syncs = spark.createDataFrame([], SYNCS_SCHEMA)
+
+    days = {
+        str(r.local_date): r for r in station_daily(hourly, coverage(syncs, timezones)).collect()
+    }
+    day = days["2026-10-20"]
+
+    assert (day.pickups, day.returns, day.net_flow) == (1, 0, -1)
+    assert (day.operator_removed, day.operator_added) == (5, 6)
+
+
 def test_station_daily_totals_and_time_weighted_average(spark, hourly, timezones):
     syncs = spark.createDataFrame(
         [("net", START + timedelta(minutes=10 * i), None) for i in range(72)],

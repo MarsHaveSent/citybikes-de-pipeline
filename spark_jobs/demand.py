@@ -8,7 +8,9 @@
 Переход на зимнее/летнее время: два дня в году в местных сутках 25 или 23 часа, и только
 в UTC каждый час уникален и длится ровно 3600 секунд.
 Взятия и возвраты - уменьшения и увеличения free_bikes между соседними состояниями, это
-оценка снизу: взятие и возврат на одной станции между опросами не видны.
+оценка снизу: взятие и возврат на одной станции между опросами не видны. Изменение сразу
+на REBALANCE_BIKES и больше за опрос - развоз оператора, оно идёт в operator_removed
+и operator_added, а не в поездки.
 
     spark-submit demand.py [первая_дата последняя_дата]
 Без дат считаются три последних местных дня; в любом случае только дни, которые у сети
@@ -36,6 +38,10 @@ SLOT_SECONDS = 600
 # Синхронизация засчитывается, только если данные у CityBikes свежее этого: сети Deutsche Bahn
 # он обновляет раз в 20 минут, а днём их данные бывают заморожены по 14 часов
 FRESH_SECONDS = 1800
+# Пользователи меняют число велосипедов на станции за 10 минут на 1-2 (95% изменений), до 4
+# взятия и возвраты встречаются одинаково часто. С 5 велосипедов привозов заметно больше,
+# чем вывозов: это машина развоза
+REBALANCE_BIKES = 5
 
 
 def one_hour() -> Column:
@@ -56,13 +62,18 @@ def intervals(status: DataFrame, start: datetime, end: datetime) -> DataFrame:
     station = Window.partitionBy("network_id", "station_id").orderBy("observed_at")
     change = F.col("free_bikes") - F.lag("free_bikes").over(station)
     inside = F.col("observed_at") >= F.lit(start)
+    by_users = F.abs(F.col("change")) < REBALANCE_BIKES
+    down = F.greatest(-F.col("change"), F.lit(0))
+    up = F.greatest(F.col("change"), F.lit(0))
     return (
         status.withColumn("change", F.when(inside, change))
         .withColumn("next_at", F.lead("observed_at").over(station))
         .withColumn("valid_from", F.greatest("observed_at", F.lit(start)))
         .withColumn("valid_to", F.least(F.coalesce("next_at", F.lit(end)), F.lit(end)))
-        .withColumn("pickups", F.greatest(-F.col("change"), F.lit(0)))
-        .withColumn("returns", F.greatest(F.col("change"), F.lit(0)))
+        .withColumn("pickups", F.when(by_users, down).otherwise(0))
+        .withColumn("returns", F.when(by_users, up).otherwise(0))
+        .withColumn("operator_removed", F.when(~by_users, down).otherwise(0))
+        .withColumn("operator_added", F.when(~by_users, up).otherwise(0))
         .filter(F.col("valid_to") > F.col("valid_from"))
     )
 
@@ -95,6 +106,8 @@ def station_hours(spans: DataFrame) -> DataFrame:
         F.max("free_bikes").alias("max_free_bikes"),
         F.sum(F.when(event_here, F.col("pickups"))).alias("pickups"),
         F.sum(F.when(event_here, F.col("returns"))).alias("returns"),
+        F.sum(F.when(event_here, F.col("operator_removed"))).alias("operator_removed"),
+        F.sum(F.when(event_here, F.col("operator_added"))).alias("operator_added"),
         F.count(F.when(event_here & F.col("change").isNotNull(), 1)).alias("changes"),
     )
 
@@ -144,6 +157,8 @@ def station_daily(hourly: DataFrame, hour_coverage: DataFrame) -> DataFrame:
     daily = hourly.groupBy("network_id", "station_id", "local_date").agg(
         F.coalesce(F.sum("pickups"), F.lit(0)).cast("int").alias("pickups"),
         F.coalesce(F.sum("returns"), F.lit(0)).cast("int").alias("returns"),
+        F.coalesce(F.sum("operator_removed"), F.lit(0)).cast("int").alias("operator_removed"),
+        F.coalesce(F.sum("operator_added"), F.lit(0)).cast("int").alias("operator_added"),
         F.sum("changes").cast("int").alias("changes"),
         (F.sum("bike_seconds") / F.sum("seconds")).alias("avg_free_bikes"),
         (F.sum("ebike_seconds") / F.sum("seconds")).alias("avg_ebikes"),
@@ -170,6 +185,8 @@ def network_hourly(hourly: DataFrame, hour_coverage: DataFrame, weather: DataFra
         F.countDistinct("station_id").alias("stations"),
         F.coalesce(F.sum("pickups"), F.lit(0)).cast("int").alias("pickups"),
         F.coalesce(F.sum("returns"), F.lit(0)).cast("int").alias("returns"),
+        F.coalesce(F.sum("operator_removed"), F.lit(0)).cast("int").alias("operator_removed"),
+        F.coalesce(F.sum("operator_added"), F.lit(0)).cast("int").alias("operator_added"),
         (F.sum("bike_seconds") / 3600).alias("bikes_available"),
         (F.sum("ebike_seconds") / 3600).alias("ebikes_available"),
         (F.sum("empty_seconds") / F.sum("seconds")).alias("empty_station_share"),
