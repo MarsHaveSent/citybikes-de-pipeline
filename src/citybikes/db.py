@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from psycopg import Connection
@@ -87,6 +87,24 @@ def station_rows(
         )
         for s in by_id.values()
     ]
+
+
+def parse_timestamp(value: str | None) -> datetime | None:
+    """Время станции из API. CityBikes пишет и смещение, и Z: 2026-10-31T07:07:01+00:00Z."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.removesuffix("Z"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def feed_updated_at(stations: list[dict[str, Any]]) -> datetime | None:
+    return max(
+        (t for s in stations if (t := parse_timestamp(s.get("timestamp"))) is not None),
+        default=None,
+    )
 
 
 def upsert_networks(conn: Connection, networks: list[dict[str, Any]], seen_at: datetime) -> int:
@@ -228,9 +246,9 @@ def sync_stations(
             (synced_at, network_id),
         )
         cur.execute(
-            "INSERT INTO network_syncs (network_id, synced_at, stations, changes)"
-            " VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-            (network_id, synced_at, len(rows), changes),
+            "INSERT INTO network_syncs (network_id, synced_at, stations, changes, feed_updated_at)"
+            " VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            (network_id, synced_at, len(rows), changes, feed_updated_at(stations)),
         )
     return StationsSyncResult(stations=len(rows), changes=changes)
 

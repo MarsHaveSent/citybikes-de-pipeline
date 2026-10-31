@@ -22,6 +22,7 @@ def test_bronze_checks(conn):
     found = values(results)
 
     assert 9.9 < found["bronze_polled_lag_minutes"] < 11
+    assert found["bronze_stale_feed_networks"] == 0
     assert found["bronze_crawl_coverage_24h"] == 0.5
     assert found["bronze_catalog_lag_hours"] < 0.1
     assert 2.9 < found["bronze_weather_lag_hours"] < 3.1
@@ -43,6 +44,23 @@ def test_never_synced_polled_network_fails_freshness(conn):
     )
 
     assert result.status == "fail"
+
+
+def test_stale_feed_is_counted_by_latest_sync(conn):
+    db.upsert_networks(conn, [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}], NOW)
+    feed = (NOW - timedelta(hours=2)).isoformat()
+    # Сеть a замерла, у сети b была заморозка, но последняя синхронизация свежая
+    db.sync_stations(conn, "a", [{"id": "1", "timestamp": feed}], NOW)
+    db.sync_stations(conn, "b", [{"id": "1", "timestamp": feed}], NOW - timedelta(minutes=10))
+    db.sync_stations(conn, "b", [{"id": "1", "timestamp": NOW.isoformat()}], NOW)
+
+    results = dq.run_checks(
+        lambda sql, params: conn.execute(sql, params).fetchone()[0],
+        dq.BRONZE_CHECKS,
+        {"polled": ["a", "b"]},
+    )
+
+    assert values(results)["bronze_stale_feed_networks"] == 1
 
 
 def snapshot(ch, day, stations, extra_rows=()):

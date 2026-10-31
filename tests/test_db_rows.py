@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 
 from psycopg.types.json import Jsonb
 
-from citybikes.db import NETWORK_COLUMNS, network_row, station_rows
+from citybikes.db import (
+    NETWORK_COLUMNS,
+    feed_updated_at,
+    network_row,
+    parse_timestamp,
+    station_rows,
+)
 
 NOW = datetime(2026, 10, 8, tzinfo=UTC)
 
@@ -48,3 +54,22 @@ def test_station_rows_keep_raw_timestamp():
     raw = "2026-10-08T09:28:46.069611+00:00Z"
     (row,) = station_rows("net", [{"id": "a", "timestamp": raw}], NOW)
     assert row[5] == raw
+
+
+def test_parse_timestamp_accepts_offset_with_z_and_naive_utc():
+    expected = datetime(2026, 10, 31, 7, 7, 1, 106739, tzinfo=UTC)
+    assert parse_timestamp("2026-10-31T07:07:01.106739+00:00Z") == expected
+    assert parse_timestamp("2026-10-31T07:07:01.106739Z") == expected
+    assert parse_timestamp("2026-10-31T07:07:01.106739") == expected
+    assert parse_timestamp("not a date") is None
+    assert parse_timestamp(None) is None
+
+
+def test_feed_updated_at_is_latest_station_timestamp():
+    stations = [
+        {"id": "a", "timestamp": "2026-10-31T07:07:00+00:00Z"},
+        {"id": "b", "timestamp": "2026-10-31T07:07:02+00:00Z"},
+        {"id": "c", "timestamp": None},
+    ]
+    assert feed_updated_at(stations) == datetime(2026, 10, 31, 7, 7, 2, tzinfo=UTC)
+    assert feed_updated_at([{"id": "a"}]) is None

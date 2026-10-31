@@ -3,7 +3,8 @@
 - build_station_status: новые строки station_status_log -> /citybikes/silver/station_status
   (Delta, MERGE без дублей при перекрытии)
 - prune_status_log: удаление из Postgres строк лога старше 30 дней, они уже в silver
-- build_demand: витрины station_daily и network_hourly за последние местные сутки
+- build_demand: витрины station_daily и network_hourly за последние местные сутки.
+  Пересчёт периода - ручной запуск с конфигурацией {"first": "2026-10-23", "last": "2026-10-30"}
 - load_demand: загрузка пересчитанных дней в ClickHouse
 - dq_demand: проверки витрин, в том числе «застывшие» данные сетей
 """
@@ -93,6 +94,7 @@ prune_status_log = SQLExecuteQueryOperator(
 build_demand = SparkSubmitOperator(
     task_id="build_demand",
     application=f"{SPARK_JOBS}/demand.py",
+    application_args=["{{ dag_run.conf.get('first', '') }}", "{{ dag_run.conf.get('last', '') }}"],
     name="citybikes_demand",
     env_vars=POSTGRES_ENV,
     dag=dag,

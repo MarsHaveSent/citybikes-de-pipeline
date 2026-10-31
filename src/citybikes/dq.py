@@ -117,6 +117,23 @@ BRONZE_CHECKS = [
         warn_at=30,
         fail_at=120,
     ),
+    # Опрос идёт, а данные у CityBikes не обновляются. У сетей Deutsche Bahn это бывает
+    # каждый день, поэтому warn; если замерла половина сетей, сломалось что-то общее
+    Check(
+        "bronze_stale_feed_networks",
+        "bronze",
+        """
+        SELECT count(*) FROM (
+            SELECT DISTINCT ON (network_id) synced_at, feed_updated_at
+            FROM network_syncs
+            WHERE network_id = ANY(%(polled)s) AND synced_at > now() - interval '1 day'
+            ORDER BY network_id, synced_at DESC
+        ) AS latest
+        WHERE synced_at - feed_updated_at > interval '1 hour'
+        """,
+        warn_at=0,
+        fail_at=10,
+    ),
     Check(
         "bronze_crawl_coverage_24h",
         "bronze",

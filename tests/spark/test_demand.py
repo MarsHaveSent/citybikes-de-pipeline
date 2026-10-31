@@ -15,6 +15,7 @@ from spark_jobs.station_status import LOG_SCHEMA
 
 START = datetime(2026, 10, 20, 0, 0, tzinfo=UTC)
 END = datetime(2026, 10, 21, 0, 0, tzinfo=UTC)
+SYNCS_SCHEMA = "network_id string, synced_at timestamp, feed_updated_at timestamp"
 
 
 def at(hour, minute=0, day=20):
@@ -55,8 +56,8 @@ def test_station_hours_split_intervals_and_count_changes(hourly):
 
 def test_station_daily_totals_and_time_weighted_average(spark, hourly, timezones):
     syncs = spark.createDataFrame(
-        [("net", START + timedelta(minutes=10 * i)) for i in range(72)],
-        "network_id string, synced_at timestamp",
+        [("net", START + timedelta(minutes=10 * i), None) for i in range(72)],
+        SYNCS_SCHEMA,
     )
 
     rows = station_daily(hourly, coverage(syncs, timezones)).collect()
@@ -75,8 +76,8 @@ def test_coverage_of_day_with_clock_change_is_complete(spark, timezones):
     # с 22:00 UTC 24.10 до 23:00 UTC 25.10
     first = datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
     syncs = spark.createDataFrame(
-        [("net", first + timedelta(minutes=10 * i)) for i in range(25 * 6)],
-        "network_id string, synced_at timestamp",
+        [("net", first + timedelta(minutes=10 * i), None) for i in range(25 * 6)],
+        SYNCS_SCHEMA,
     )
     status = spark.createDataFrame([("net", "1", first, 1, 1, 0)], LOG_SCHEMA)
     hourly = localize(
@@ -89,8 +90,19 @@ def test_coverage_of_day_with_clock_change_is_complete(spark, timezones):
     assert day.observed_share == pytest.approx(1.0)
 
 
+def test_syncs_with_stale_feed_are_not_observed(spark, timezones):
+    # Данные обновились в 10:00 UTC и замерли: синхронизации после 10:30 не засчитываются
+    feed = at(10)
+    syncs = spark.createDataFrame([("net", at(10, 10 * i), feed) for i in range(6)], SYNCS_SCHEMA)
+
+    (hour,) = coverage(syncs, timezones).collect()
+
+    assert hour.slots == 4
+    assert hour.observed_share == pytest.approx(4 / 6)
+
+
 def test_unfinished_local_days_are_dropped(spark, hourly, timezones):
-    syncs = spark.createDataFrame([], "network_id string, synced_at timestamp")
+    syncs = spark.createDataFrame([], SYNCS_SCHEMA)
     daily = station_daily(hourly, coverage(syncs, timezones)).join(timezones, "network_id")
     # Сутки 20.10 в Берлине заканчиваются в 22:00 UTC
     now = datetime(2026, 10, 20, 21, 0)
@@ -101,7 +113,7 @@ def test_unfinished_local_days_are_dropped(spark, hourly, timezones):
 
 
 def test_weather_of_hour_end_is_joined_to_the_hour(spark, hourly, timezones):
-    syncs = spark.createDataFrame([], "network_id string, synced_at timestamp")
+    syncs = spark.createDataFrame([], SYNCS_SCHEMA)
     weather = spark.createDataFrame(
         [("net", at(11), 9.5, 8.0, 1.2, 4.0, 61, at(12))],
         "network_id string, hour timestamp, temperature float, apparent_temperature float, "

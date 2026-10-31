@@ -33,6 +33,9 @@ DEFAULT_DAYS = 3
 RETENTION_HOURS = 168
 # Шаг частого опроса: по нему считается, какая часть суток наблюдалась
 SLOT_SECONDS = 600
+# Синхронизация засчитывается, только если данные у CityBikes свежее этого: сети Deutsche Bahn
+# он обновляет раз в 20 минут, а днём их данные бывают заморожены по 14 часов
+FRESH_SECONDS = 1800
 
 
 def one_hour() -> Column:
@@ -106,10 +109,14 @@ def localize(hourly: DataFrame, timezones: DataFrame) -> DataFrame:
 
 
 def coverage(syncs: DataFrame, timezones: DataFrame) -> DataFrame:
-    """Доля 10-минутных слотов местного часа, в которых сеть синхронизировалась."""
+    """Доля 10-минутных слотов местного часа, в которых сеть синхронизировалась
+    и получила свежие данные. Без времени обновления (старые синхронизации) данные считаются
+    свежими."""
     slot = F.floor(epoch("synced_at") / SLOT_SECONDS)
+    stale = epoch("synced_at") - epoch("feed_updated_at") > FRESH_SECONDS
     return (
-        syncs.withColumn("hour_utc", F.date_trunc("hour", "synced_at"))
+        syncs.filter(~F.coalesce(stale, F.lit(False)))
+        .withColumn("hour_utc", F.date_trunc("hour", "synced_at"))
         .groupBy("network_id", "hour_utc")
         .agg(F.countDistinct(slot).alias("slots"))
         .withColumn("observed_share", F.least(F.col("slots") / (3600 / SLOT_SECONDS), F.lit(1.0)))
@@ -245,6 +252,8 @@ def write_days(
 
 
 def period(args: list[str], now: datetime) -> tuple[date, date]:
+    # Из Airflow без параметров запуска приходят пустые строки
+    args = [a for a in args if a]
     if args:
         return date.fromisoformat(args[0]), date.fromisoformat(args[1])
     last = now.date()

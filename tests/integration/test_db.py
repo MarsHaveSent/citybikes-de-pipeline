@@ -158,6 +158,19 @@ def test_every_sync_is_journaled_even_without_changes(conn):
     ]
 
 
+def test_sync_journals_feed_update_time(conn):
+    add_network(conn)
+    stations = [
+        {**station("a", 1), "timestamp": "2026-10-15T11:40:00+00:00Z"},
+        {**station("b", 2), "timestamp": "2026-10-15T11:41:00+00:00Z"},
+    ]
+    db.sync_stations(conn, "net", stations, T0)
+
+    assert fetch(conn, "SELECT feed_updated_at FROM network_syncs") == [
+        (datetime(2026, 10, 15, 11, 41, tzinfo=UTC),)
+    ]
+
+
 def test_geonames_are_replaced_entirely(conn):
     db.replace_geonames(conn, [("DE", "Germany", "EU", 83_000_000)], [], T0)
     db.replace_geonames(

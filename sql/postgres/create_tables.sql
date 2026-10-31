@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS network_syncs (
     PRIMARY KEY (network_id, synced_at)
 );
 CREATE INDEX IF NOT EXISTS network_syncs_synced_at_idx ON network_syncs (synced_at);
+-- Время, когда CityBikes последний раз обновил данные сети: самый поздний timestamp станций
+-- в ответе. Опрос может пройти, а данные - замереть: у сетей Deutsche Bahn это бывает каждый день.
+-- NULL - синхронизации до 31.10, когда колонки ещё не было
+ALTER TABLE network_syncs ADD COLUMN IF NOT EXISTS feed_updated_at timestamptz;
 
 -- Лог изменений станций: строка появляется, только когда изменилось число велосипедов,
 -- свободных слотов или электровелосипедов. Без FK на stations: история переживает удаление станции.
