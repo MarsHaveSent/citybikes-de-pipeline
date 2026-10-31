@@ -11,20 +11,18 @@ RATE_LIMIT_RESERVE = 120
 
 # Сети для частого опроса - Германия: один часовой пояс и сравнимые города, а в Берлине,
 # Мюнхене и Кёльне работают по два оператора. 20 сетей раз в 10 минут
-# Эксперимент с 30.10: сети Deutsche Bahn вне частого опроса. С 23.10 их данные в CityBikes
-# каждый день замирают с ~09:40 до 00:10 UTC - проверка, не нагрузка ли пайплайна исчерпывает квоту
 POLLED_NETWORKS = (
     # nextbike и Call a Bike (Deutsche Bahn)
     "nextbike-berlin",
-    # "callabike-berlin",
+    "callabike-berlin",
     "nextbike-myradl",
-    # "callabike-munchen",
+    "callabike-munchen",
     "kvb-rad-koln",
-    # "callabike-koln",
+    "callabike-koln",
     # Deutsche Bahn
-    # "stadtrad-hamburg-db",
-    # "callabike-frankfurt",
-    # "stadtrad-stuttgart",
+    "stadtrad-hamburg-db",
+    "callabike-frankfurt",
+    "stadtrad-stuttgart",
     # nextbike
     "mobibike-dresden",
     "nextbike-dusseldorf",
