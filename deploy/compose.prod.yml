@@ -20,6 +20,12 @@ x-airflow-env: &airflow-env
   AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/airflow/execution/
 
 services:
+  # Порт для Yandex DataLens, только IPv4
+  # Кого пускать, решают deploy/firewall.sh и pg_hba.conf
+  postgres:
+    ports:
+      - "0.0.0.0:6432:5432"
+
   airflow-init:
     <<: *airflow-image
     environment:

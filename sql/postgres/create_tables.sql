@@ -153,3 +153,87 @@ CREATE TABLE IF NOT EXISTS geo_cities (
     timezone   text,
     loaded_at  timestamptz NOT NULL
 );
+
+-- Представления для дашборда здоровья пайплайна в Yandex DataLens. Пользователь datalens видит
+-- только их: без текста ошибок, паролей подключений и сырых таблиц
+CREATE OR REPLACE VIEW health_task_runs AS
+SELECT
+    dag_id,
+    task_id,
+    run_id,
+    try_number,
+    state,
+    started_at,
+    finished_at,
+    duration_s,
+    run_id LIKE 'manual__%' AS is_manual,
+    -- Только класс исключения: в тексте бывают команды spark-submit и пути
+    substring(error FROM '^[A-Za-z_.]+') AS error_type
+FROM ops_task_runs;
+
+CREATE OR REPLACE VIEW health_dq_results AS
+SELECT checked_at, layer, check_name, value, warn_at, fail_at, status, run_id
+FROM ops_dq_results;
+
+-- Сеть × местные сутки: полнота наблюдения по тому же правилу, что в spark_jobs/demand.py
+-- (10-минутный слот засчитывается, если данные свежее 30 минут), и «живость» - доля станций,
+-- изменившихся за опрос. Сети, которые только обходит краулер (4-6 раз в сутки), не попадают
+CREATE OR REPLACE VIEW health_network_days AS
+WITH syncs AS (
+    SELECT
+        s.network_id,
+        s.synced_at,
+        s.stations,
+        s.changes,
+        tz.timezone,
+        (s.synced_at AT TIME ZONE tz.timezone)::date AS local_date,
+        s.feed_updated_at IS NULL
+            OR s.synced_at - s.feed_updated_at <= interval '30 minutes' AS fresh
+    FROM network_syncs s
+    JOIN network_timezones tz USING (network_id)
+)
+SELECT
+    syncs.network_id,
+    n.name AS network_name,
+    n.location ->> 'city' AS city,
+    syncs.local_date,
+    count(*) AS syncs,
+    count(*) FILTER (WHERE NOT fresh) AS stale_syncs,
+    -- Длина суток - между местными полуночами: в дни перевода часов 23 или 25 часов
+    least(
+        count(DISTINCT floor(extract(epoch FROM syncs.synced_at) / 600)) FILTER (WHERE fresh)
+            / (extract(epoch FROM ((syncs.local_date + 1)::timestamp AT TIME ZONE syncs.timezone)
+                - (syncs.local_date::timestamp AT TIME ZONE syncs.timezone)) / 600),
+        1
+    ) AS observed_share,
+    sum(syncs.changes) AS changes,
+    avg(syncs.changes::numeric / nullif(syncs.stations, 0)) AS changed_share
+FROM syncs
+JOIN networks n ON n.id = syncs.network_id
+GROUP BY syncs.network_id, n.name, n.location ->> 'city', syncs.local_date, syncs.timezone
+HAVING count(*) >= 24;
+
+-- Объёмы за сутки UTC из метрик, которые задачи возвращают в ops_task_runs
+CREATE OR REPLACE VIEW health_daily_volumes AS
+SELECT
+    finished_at::date AS day,
+    sum((metrics ->> 'synced')::bigint) FILTER (WHERE task_id = 'poll') AS poll_syncs,
+    sum((metrics ->> 'synced')::bigint) FILTER (WHERE task_id = 'crawl') AS crawl_syncs,
+    sum((metrics ->> 'changes')::bigint) FILTER (WHERE task_id IN ('poll', 'crawl')) AS log_rows,
+    sum((metrics ->> 'hours')::bigint) FILTER (WHERE task_id = 'load_weather') AS weather_hours,
+    sum((metrics ->> 'station_daily')::bigint + (metrics ->> 'network_hourly')::bigint)
+        FILTER (WHERE task_id = 'load_demand') AS demand_rows_loaded,
+    sum(coalesce((metrics ->> 'stations_obt')::bigint, (metrics ->> 'rows')::bigint))
+        FILTER (WHERE task_id = 'load_clickhouse') AS obt_rows_loaded
+FROM ops_task_runs
+WHERE state = 'success' AND metrics IS NOT NULL
+GROUP BY finished_at::date;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'datalens') THEN
+        GRANT SELECT ON health_task_runs, health_dq_results, health_network_days,
+            health_daily_volumes TO datalens;
+    END IF;
+END
+$$;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Первичная настройка чистого Ubuntu 24.04 под проект. Запуск от root:
 #   ssh root@<host> 'bash -s' < deploy/bootstrap.sh
-# Повторный запуск безопасен.
+# Повторный запуск безопасен. Фаервол настраивает deploy/firewall.sh, его запускать следом.
 set -euo pipefail
 
 DEPLOY_USER=deploy
@@ -16,16 +16,6 @@ PermitRootLogin prohibit-password
 EOF
 sshd -t
 systemctl reload ssh
-
-echo "== Фаервол"
-# Порты контейнеров Docker открывает в обход ufw, поэтому внутренние сервисы
-# в compose привязаны к 127.0.0.1. ufw защищает то, что слушает сам хост.
-# Правило панели хостинга от шаблона ОС, панель не установлена
-ufw delete allow ispmanager >/dev/null 2>&1 || true
-ufw allow 22/tcp >/dev/null
-ufw allow 80/tcp >/dev/null
-ufw allow 443/tcp >/dev/null
-ufw --force enable >/dev/null
 
 echo "== Docker"
 if ! command -v docker >/dev/null; then
@@ -64,7 +54,6 @@ fi
 
 echo "== Итог"
 sshd -T | grep -E "^(passwordauthentication|permitrootlogin) "
-ufw status | grep ALLOW
 docker --version
 docker compose version
 id "$DEPLOY_USER"

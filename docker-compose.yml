@@ -54,10 +54,26 @@ services:
   postgres:
     # Точная версия и ОС образа
     image: &postgres-image postgres:17.11-trixie
+    # TLS и свои правила доступа: на сервере порт открыт для Yandex DataLens (deploy/compose.prod.yml)
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - postgres-certs:/certs:ro
+      - ./docker/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    depends_on:
+      postgres-certs:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
     healthcheck:
@@ -68,6 +84,25 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+  # Самоподписанный сертификат для TLS, создаётся один раз и живёт в томе.
+  # Его же DataLens получает как CA
+  postgres-certs:
+    image: *postgres-image
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        [ -f /certs/server.key ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+            -subj "/CN=$$CERT_HOST" -addext "subjectAltName=DNS:$$CERT_HOST" \
+            -keyout /certs/server.key -out /certs/server.crt
+        chown postgres:postgres /certs/server.key /certs/server.crt
+        chmod 600 /certs/server.key
+    environment:
+      CERT_HOST: ${SITE_DOMAIN:-localhost}
+    volumes:
+      - postgres-certs:/certs
 
   # Пользователи и базы Airflow, citybikes и Metabase
   postgres-init:
@@ -80,6 +115,7 @@ services:
       AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?}
       CITYBIKES_DB_PASSWORD: ${CITYBIKES_DB_PASSWORD:?}
       METABASE_DB_PASSWORD: ${METABASE_DB_PASSWORD:?}
+      DATALENS_DB_PASSWORD: ${DATALENS_DB_PASSWORD:?}
     volumes:
       - ./docker/postgres/init-databases.sh:/init-databases.sh:ro
     depends_on:
@@ -284,6 +320,7 @@ services:
 
 volumes:
   postgres-data:
+  postgres-certs:
   airflow-logs:
   hdfs-namenode:
   hdfs-datanode:

@@ -16,3 +16,10 @@ EOSQL
 create airflow "$AIRFLOW_DB_PASSWORD"
 create citybikes "$CITYBIKES_DB_PASSWORD"
 create metabase "$METABASE_DB_PASSWORD"
+
+# Yandex DataLens: своей базы нет, читает представления health_* в базе citybikes.
+# Права на них выдаёт sql/postgres/create_tables.sql, вход только из сетей DataLens - pg_hba.conf
+psql -v ON_ERROR_STOP=1 --dbname postgres -v pw="$DATALENS_DB_PASSWORD" <<'EOSQL'
+SELECT format('CREATE USER datalens WITH PASSWORD %L', :'pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'datalens') \gexec
+EOSQL
