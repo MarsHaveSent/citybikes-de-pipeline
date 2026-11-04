@@ -117,8 +117,9 @@ BRONZE_CHECKS = [
         warn_at=30,
         fail_at=120,
     ),
-    # Опрос идёт, а данные у CityBikes не обновляются. У сетей Deutsche Bahn это бывает
-    # каждый день, поэтому warn; если замерла половина сетей, сломалось что-то общее
+    # Опрос идёт, а данные у CityBikes не обновляются. У шести сетей Deutsche Bahn это бывает
+    # каждый день, поэтому warn - только сверх них; если замерла половина сетей,
+    # сломалось что-то общее
     Check(
         "bronze_stale_feed_networks",
         "bronze",
@@ -131,7 +132,7 @@ BRONZE_CHECKS = [
         ) AS latest
         WHERE synced_at - feed_updated_at > interval '1 hour'
         """,
-        warn_at=0,
+        warn_at=6,
         fail_at=10,
     ),
     Check(
@@ -242,6 +243,8 @@ GOLD_CHECKS = [
 # Полностью наблюдённые сети - те, которые опрашивались не меньше 90% суток
 _OBSERVED = "observed_share >= 0.9"
 DEMAND_CHECKS = [
+    # Из 20 опрашиваемых сетей шесть сетей Deutsche Bahn ежедневно выпадают из-за заморозки
+    # данных у CityBikes, поэтому норма - 14
     Check(
         "demand_observed_networks",
         "gold",
@@ -249,8 +252,8 @@ DEMAND_CHECKS = [
         SELECT uniqExact(network_id) FROM station_daily
         WHERE local_date = {{day:Date}} AND {_OBSERVED}
         """,
-        warn_at=18,
-        fail_at=10,
+        warn_at=12,
+        fail_at=8,
         lower_is_worse=True,
     ),
     # Сеть опрашивалась весь день, но станции почти не менялись: API отдаёт застывшие данные
@@ -272,7 +275,7 @@ DEMAND_CHECKS = [
         SELECT uniqExact(network_id) FROM station_daily
         WHERE local_date = {day:Date} AND observed_share >= 0.3 AND observed_share < 0.9
         """,
-        warn_at=0,
+        warn_at=6,
     ),
 ]
 
