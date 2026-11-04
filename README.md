@@ -8,9 +8,25 @@ ELT-пайплайн на данных сетей велошеринга: заг
 
 > Проект в разработке.
 
+## Дашборды
+
+| Дашборд | Инструмент | Что показывает |
+|---|---|---|
+| [Мировой рынок велошеринга](https://citybikes-de-pipeline.ru/public/dashboard/69d03a05-ad52-4fa6-a02a-e66643c7fb50) | Metabase | Насыщенность станциями по странам, концентрация операторов, крупные города без велошеринга |
+| [Спрос в Германии](https://citybikes-de-pipeline.ru/public/dashboard/bce119fb-beed-46c6-9044-baf24b43f7a6) | Metabase | Поездки по часам и дням недели, сравнение сетей, влияние дождя и температуры |
+| [Дефицит и перекосы](https://citybikes-de-pipeline.ru/public/dashboard/07c5df1f-b41d-4dd7-9c85-5bb065e5c275) | Metabase | Станции без велосипедов, доноры и приёмники, развоз оператора |
+| [Здоровье пайплайна](https://datalens.yandex/5gosbjogfejoo?_share_link=public) | Yandex DataLens | Запуски задач, проверки качества, полнота опроса сетей, объёмы данных |
+
+Ссылки открываются без входа, пока работает сервер. Все скриншоты с подписями — в [docs/screenshots](docs/screenshots/README.md).
+
+| | |
+|---|---|
+| ![Мировой рынок: станций на 1 млн жителей](docs/screenshots/metabase-1-2.png) | ![Спрос в Германии: взятия по часам](docs/screenshots/metabase-2-2.png) |
+| ![Дефицит: пустеющие популярные станции](docs/screenshots/metabase-3-2.png) | ![Здоровье пайплайна: история запусков](docs/screenshots/datalens-history-1.png) |
+
 ## Стек
 
-Python 3.12, Apache Airflow 3, PostgreSQL, Apache Spark, HDFS, Delta Lake, ClickHouse, Metabase, Docker, uv, GitHub Actions.
+Python 3.12, Apache Airflow 3, PostgreSQL, Apache Spark, HDFS, Delta Lake, ClickHouse, Metabase, Yandex DataLens, Docker, uv, GitHub Actions.
 
 ## Слои данных
 
