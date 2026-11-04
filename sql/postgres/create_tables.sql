@@ -199,10 +199,11 @@ SELECT
     syncs.local_date,
     count(*) AS syncs,
     count(*) FILTER (WHERE NOT fresh) AS stale_syncs,
-    -- Длина суток - между местными полуночами: в дни перевода часов 23 или 25 часов
+    -- Длина суток - между местными полуночами: в дни перевода часов 23 или 25 часов.
+    -- Текущие сутки считаются до now(), иначе незаконченный день выглядит как провал полноты
     least(
         count(DISTINCT floor(extract(epoch FROM syncs.synced_at) / 600)) FILTER (WHERE fresh)
-            / (extract(epoch FROM ((syncs.local_date + 1)::timestamp AT TIME ZONE syncs.timezone)
+            / (extract(epoch FROM least((syncs.local_date + 1)::timestamp AT TIME ZONE syncs.timezone, now())
                 - (syncs.local_date::timestamp AT TIME ZONE syncs.timezone)) / 600),
         1
     ) AS observed_share,
