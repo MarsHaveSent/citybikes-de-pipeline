@@ -124,13 +124,23 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    command: version
+    # Entrypoint образа сначала мигрирует базу и создаёт админа, потом выполняет команду.
+    # Существующего пользователя users create не трогает, поэтому повторный запуск безопасен
+    command:
+      - bash
+      - -c
+      - >-
+        airflow users create --role Viewer --username "$$AIRFLOW_VIEWER_USER"
+        --password "$$AIRFLOW_VIEWER_PASSWORD" --firstname Viewer --lastname CityBikes
+        --email viewer@example.com
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
       _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?}
+      AIRFLOW_VIEWER_USER: ${AIRFLOW_VIEWER_USER:-viewer}
+      AIRFLOW_VIEWER_PASSWORD: ${AIRFLOW_VIEWER_PASSWORD:?}
 
   airflow-apiserver:
     <<: *airflow-common
